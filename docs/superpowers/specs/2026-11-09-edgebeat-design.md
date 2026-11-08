@@ -1,7 +1,7 @@
 # Edgebeat — Design
 
 Date: 2026-11-09
-Status: draft, awaiting owner approval
+Status: approved by owner 2026-11-09
 
 Edgebeat is an open-source uptime monitor, heartbeat (push) monitor and public
 status page that runs entirely on the user's own Cloudflare account, on the
@@ -362,12 +362,10 @@ Channel secrets are stored encrypted in D1 (AES-GCM, key from the
 ## 12. Repo and project
 
 - Location: `~/Dev/edgebeat` [owner]. Single package.
-- GitHub org: `edgebeat-dev` (free; `edgebeat` user name is taken) — owner to
-  confirm.
-- Docs site / domain: `edgebeat.sh` is free; `.com/.dev/.io/.app` are
+- GitHub org: `edgebeat-dev` (`edgebeat` user name is taken) [owner].
+- Docs site / domain: `edgebeat.sh` [owner]. `.com/.dev/.io/.app` are
   registered by someone else (all at IONOS, possible future name conflict).
-  Owner to confirm.
-- License: MIT [call] — owner to confirm.
+- License: MIT [owner].
 - README, CONTRIBUTING, SECURITY, screenshots, demo deployment (Kirimi's page
   can serve as the live demo if the owner agrees).
 
@@ -387,7 +385,21 @@ Exact endpoint list is decided during rollout, not in this design.
 
 ---
 
-## 14. Left to the builder
+## 14. Amendments from planning (2026-11-09)
+
+- **Scheduling** uses deterministic slots instead of a stored `next_due_at`:
+  a monitor is due when `epochMinute % interval == hash(id) % interval`.
+  Overflow beyond the budget is carried in `snapshot.carry`. No per-check
+  write. (§5, §6.1)
+- **Tick lock**: a conditional update on `snapshot.lockUntil` prevents two
+  overlapping ticks; a 50 s wall-clock deadline carries unstarted checks.
+- **Rollup is incremental**: every 15 min only new `ticks` rows are folded
+  into `daily_stats`; p50/p95 come from a fixed latency histogram stored on
+  the row; the 90-day bars update only today's entry. (§5, §6.1)
+- **Heartbeat coalescing** returns `200 { coalesced: true }` (not 429) so
+  `curl -f` in user jobs never fails; still no D1 write. (§6.5)
+
+## 15. Left to the builder
 
 - Exact Drizzle schema, indexes, JSON shapes of `ticks` and `snapshot`.
 - Chart library on the status page (must be tiny or hand-rolled SVG).
@@ -395,7 +407,7 @@ Exact endpoint list is decided during rollout, not in this design.
 - Error classes taxonomy for checks.
 - File layout inside the package.
 
-## 15. v2 ideas (not now)
+## 16. v2 ideas (not now)
 - Multi-region checks via Durable Objects with `locationHint`
   (`wnam, enam, sam, weur, eeur, apac, oc, afr, me`), quorum-based DOWN.
 - Visitor subscriptions (email via paid plan, RSS already in v1).
