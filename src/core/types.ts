@@ -26,3 +26,5 @@ export type SchedMonitor = {
   intervalMin: number;
   type: MonitorType;
 };
+
+export type CurrentEntry = { state: MonitorState; lastCheckedAt: number | null; latencyMs: number | null };

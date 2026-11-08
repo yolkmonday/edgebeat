@@ -3,7 +3,7 @@ import { runChecks as defaultRunChecks, type RunnableMonitor } from "@/checks/ru
 import { evaluate, type PrevState } from "@/core/evaluate";
 import { checkBudget, isDue, selectChecks } from "@/core/schedule";
 import { utcDay } from "@/core/stats";
-import type { CheckResult, ErrorClass, MonitorState } from "@/core/types";
+import type { CheckResult, CurrentEntry, ErrorClass, MonitorState } from "@/core/types";
 import { getDb } from "@/db/client";
 import { dailyStats, events, heartbeats, monitors, monitorState, settings, snapshot, ticks } from "@/db/schema";
 import type { Env } from "@/env";
@@ -36,7 +36,7 @@ export type TickResult = {
   stateWrites: number;
 };
 
-export type CurrentEntry = { state: MonitorState; lastCheckedAt: number | null; latencyMs: number | null };
+export type { CurrentEntry };
 
 type Deps = { runChecks?: typeof defaultRunChecks };
 type Db = ReturnType<typeof getDb>;
