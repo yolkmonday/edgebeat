@@ -1,13 +1,19 @@
-import { SELF, env } from "cloudflare:test";
+import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db/client";
 import * as t from "@/db/schema";
+import worker from "@/index";
 import type { PublicStatus } from "@/core/public-status";
 
 const db = getDb(env);
-let n = 0;
-// unique query string per call: the Cache API persists across tests
-const get = () => SELF.fetch(`https://edgebeat.test/api/v1/status?t=${++n}`);
+const KEY = "https://edgebeat.test/api/v1/status";
+// run through the worker with an execution context so the cache.put in waitUntil has settled on return
+const get = async (query = "") => {
+  const ctx = createExecutionContext();
+  const res = await worker.fetch(new Request(`${KEY}${query}`), env, ctx);
+  await waitOnExecutionContext(ctx);
+  return res;
+};
 
 const addMonitor = (id: string, extra: Partial<typeof t.monitors.$inferInsert> = {}) =>
   db.insert(t.monitors).values({
@@ -23,6 +29,7 @@ const addMonitor = (id: string, extra: Partial<typeof t.monitors.$inferInsert> =
   });
 
 beforeEach(async () => {
+  await caches.default.delete(new Request(KEY));
   await db.batch([
     db.delete(t.snapshot),
     db.delete(t.settings),
@@ -92,12 +99,20 @@ describe("GET /api/v1/status", () => {
     expect(body.overall).toBe("unknown");
   });
 
-  it("second request to the same URL is served from cache", async () => {
+  it("second request is served from cache", async () => {
     await addMonitor("web");
-    const url = `https://edgebeat.test/api/v1/status?cache=${++n}`;
-    const first = (await (await SELF.fetch(url)).json()) as PublicStatus;
-    await new Promise((r) => setTimeout(r, 50));
-    const second = (await (await SELF.fetch(url)).json()) as PublicStatus;
+    const first = (await (await get()).json()) as PublicStatus;
+    const second = (await (await get()).json()) as PublicStatus;
+    expect(second.generatedAt).toBe(first.generatedAt);
+  });
+
+  it("different query strings share one cache entry", async () => {
+    await addMonitor("web");
+    const first = (await (await get("?a=1")).json()) as PublicStatus;
+    expect(first.groups[0]!.monitors).toHaveLength(1);
+    await addMonitor("web2");
+    const second = (await (await get("?a=2")).json()) as PublicStatus;
+    expect(second.groups[0]!.monitors).toHaveLength(1);
     expect(second.generatedAt).toBe(first.generatedAt);
   });
 });

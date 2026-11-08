@@ -54,7 +54,8 @@ const build = async (env: Env, now: number) => {
 
 publicApi.get("/status", async (c) => {
   const cache = caches.default;
-  const key = new Request(c.req.url, { method: "GET" });
+  // normalized key: query strings must not bypass the cache (cache-busting would exhaust D1)
+  const key = new Request(`${new URL(c.req.url).origin}/api/v1/status`, { method: "GET" });
   const hit = await cache.match(key);
   if (hit) return hit;
 
