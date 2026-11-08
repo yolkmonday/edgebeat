@@ -1,8 +1,10 @@
 import { app } from "@/api/app";
 import type { Env } from "@/env";
+import { runTick } from "@/tick/tick";
 
 export default {
   fetch: app.fetch,
-  // runTick (Task 7) will be wired here
-  scheduled: async (_event: ScheduledController, _env: Env, _ctx: ExecutionContext): Promise<void> => {},
+  scheduled: async (_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> => {
+    ctx.waitUntil(runTick(env, Date.now()));
+  },
 } satisfies ExportedHandler<Env>;
