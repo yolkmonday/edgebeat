@@ -71,4 +71,38 @@ describe("evaluate", () => {
     expect(r.transition).toBeNull();
     expect(r.changed).toBe(true);
   });
+  test("maintenance + one fail leaves maintenance as pending", () => {
+    const r = evaluate(prev("maintenance"), fail, opts());
+    expect(r.next).toEqual({ state: "pending", consecutiveFailures: 1 });
+    expect(r.transition).toEqual({ from: "maintenance", to: "pending" });
+    expect(r.changed).toBe(true);
+  });
+  test("paused + one fail leaves paused as pending", () => {
+    const r = evaluate(prev("paused"), fail, opts());
+    expect(r.next).toEqual({ state: "pending", consecutiveFailures: 1 });
+    expect(r.transition).toEqual({ from: "paused", to: "pending" });
+    expect(r.changed).toBe(true);
+  });
+  test("paused + ok goes up", () => {
+    const r = evaluate(prev("paused"), ok(), opts());
+    expect(r.next).toEqual({ state: "up", consecutiveFailures: 0 });
+    expect(r.transition).toEqual({ from: "paused", to: "up" });
+    expect(r.changed).toBe(true);
+  });
+  test("maintenance + ok goes up", () => {
+    const r = evaluate(prev("maintenance"), ok(), opts());
+    expect(r.next.state).toBe("up");
+    expect(r.transition).toEqual({ from: "maintenance", to: "up" });
+    expect(r.changed).toBe(true);
+  });
+  test("degraded + fast ok goes up", () => {
+    const r = evaluate(prev("degraded"), ok(100), opts({ degradedThresholdMs: 800 }));
+    expect(r.next.state).toBe("up");
+    expect(r.transition).toEqual({ from: "degraded", to: "up" });
+    expect(r.changed).toBe(true);
+  });
+  test("paused + failure reaching confirmations goes down", () => {
+    const r = evaluate(prev("paused", 1), fail, opts());
+    expect(r.next.state).toBe("down");
+  });
 });

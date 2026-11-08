@@ -21,7 +21,9 @@ const nextState = (prev: PrevState, r: CheckResult, o: EvalOpts): PrevState => {
     return { state: slow ? "degraded" : "up", consecutiveFailures: 0 };
   }
   const failures = prev.consecutiveFailures + 1;
-  return { state: failures >= o.confirmations ? "down" : prev.state, consecutiveFailures: failures };
+  if (failures >= o.confirmations) return { state: "down", consecutiveFailures: failures };
+  const leaving = prev.state === "paused" || prev.state === "maintenance";
+  return { state: leaving ? "pending" : prev.state, consecutiveFailures: failures };
 };
 
 export const evaluate = (prev: PrevState, r: CheckResult, o: EvalOpts): EvalResult => {
