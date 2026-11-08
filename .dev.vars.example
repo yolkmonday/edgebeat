@@ -1,0 +1,3 @@
+ADMIN_PASSWORD=change-me
+# 32 random bytes, base64: openssl rand -base64 32
+ENCRYPTION_KEY=

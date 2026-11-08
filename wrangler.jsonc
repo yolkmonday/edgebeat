@@ -1,0 +1,20 @@
+{
+  "name": "edgebeat",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "edgebeat",
+      "database_id": "<set by deploy>",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "assets": {
+    "directory": "./dist/status-page",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/beat/*"]
+  },
+  "observability": { "enabled": true }
+}
