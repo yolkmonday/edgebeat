@@ -2,7 +2,7 @@ import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlit
 
 export type MonitorType = "http" | "tcp" | "heartbeat";
 export type KeywordMode = "contains" | "not_contains";
-export type MonitorState = "pending" | "up" | "degraded" | "down" | "paused";
+export type MonitorState = "pending" | "up" | "degraded" | "down" | "maintenance" | "paused";
 
 export const groups = sqliteTable("groups", {
   id: text("id").primaryKey(),
