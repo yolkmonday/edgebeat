@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { runChecks } from "@/checks/run";
 import type { RunnableMonitor } from "@/checks/run";
 import type { CheckResult } from "@/core/types";
+import { slotOf } from "@/core/schedule";
 import { utcDay, type Bar } from "@/core/stats";
 import { getDb } from "@/db/client";
 import * as t from "@/db/schema";
@@ -108,6 +109,16 @@ describe("runTick", () => {
     expect(JSON.parse(snap.current)).toEqual({ a: { state: "down", lastCheckedAt: t3, latencyMs: 80 } });
     expect(snap.lockUntil).toBe(0);
     expect(snap.lastTickAt).toBe(t3);
+  });
+
+  it("does not rewrite monitor_state for a monitor that stays down", async () => {
+    await db.insert(t.monitors).values(httpMonitor("a", { confirmations: 2 }));
+    const { fn } = fakeRunner(() => fail);
+    const writes: number[] = [];
+    for (const m of [1, 2, 3]) writes.push((await runTick(env, at(DAY0 + m), { runChecks: fn })).stateWrites);
+    expect(writes).toEqual([1, 1, 0]);
+    const [state] = await db.select().from(t.monitorState);
+    expect(state).toMatchObject({ state: "down", consecutiveFailures: 2, lastChangeAt: at(DAY0 + 2) });
   });
 
   it("writes monitor_state once for a steady OK monitor over 3 ticks", async () => {
@@ -217,9 +228,53 @@ describe("runRollup", () => {
 
   it("writes nothing when there are no new ticks", async () => {
     await db.insert(t.monitors).values(httpMonitor("a"));
+    const bars = JSON.stringify({ a: [{ day: utcDay(at(DAY0)), uptime: 1, downtimeS: 0, observedS: 600 }] });
+    await db.insert(t.snapshot).values({
+      id: 1,
+      lastTickAt: at(DAY0 + 10),
+      lockUntil: 0,
+      current: "{}",
+      bars,
+      carry: "[]",
+      lastRollupMinute: DAY0 + 10,
+    });
+    // already folded: minute <= lastRollupMinute
+    await db.insert(t.ticks).values({ minute: DAY0 + 10, at: at(DAY0 + 10), results: JSON.stringify([["a", 1, 100, 200]]) });
+
     await runRollup(env, at(DAY0 + 15));
+
     expect(await db.select().from(t.dailyStats)).toHaveLength(0);
     const snaps = await db.select().from(t.snapshot);
-    expect(snaps.every((s) => s.bars === "{}" && s.lastRollupMinute === 0)).toBe(true);
+    expect(snaps).toHaveLength(1);
+    expect(snaps[0]).toMatchObject({ bars, lastRollupMinute: DAY0 + 10 });
+  });
+
+  it("finalizes the previous day's downtime through day end for a 60-minute monitor", async () => {
+    await db.insert(t.monitors).values(httpMonitor("a", { intervalMin: 60, confirmations: 1 }));
+    const s = slotOf("a", 60);
+    const { fn } = fakeRunner(() => fail);
+    const downAt = DAY0 + 22 * 60 + s;
+    await runTick(env, at(downAt), { runChecks: fn });
+    await runTick(env, at(DAY0 + 23 * 60 + s), { runChecks: fn });
+    // rollup during day d: folds both ticks, downtime counted up to "now" only
+    await runRollup(env, at(DAY0 + 23 * 60 + s));
+    // first tick of day d+1, then a rollup in day d+1 with no more ticks for day d
+    await runTick(env, at(DAY0 + 1440 + s), { runChecks: fn });
+    await runRollup(env, at(DAY0 + 1440 + s));
+
+    const dayD = utcDay(at(DAY0));
+    const dayNext = utcDay(at(DAY0 + 1440));
+    const rows = await db.select().from(t.dailyStats).where(eq(t.dailyStats.monitorId, "a"));
+    const d = rows.find((r) => r.day === dayD)!;
+    expect(d).toMatchObject({ checks: 2, failures: 2, observedS: 7200 });
+    expect(d.downtimeS).toBe((1440 - (22 * 60 + s)) * 60);
+    const next = rows.find((r) => r.day === dayNext)!;
+    expect(next).toMatchObject({ checks: 1, observedS: 3600, downtimeS: s * 60 });
+
+    const bars = JSON.parse((await readSnapshot()).bars) as Record<string, Bar[]>;
+    expect(bars.a!.map((b) => [b.day, b.downtimeS])).toEqual([
+      [dayD, d.downtimeS],
+      [dayNext, s * 60],
+    ]);
   });
 });

@@ -65,10 +65,20 @@ describe("evaluate", () => {
   test("confirmations 1 goes down immediately", () => {
     expect(evaluate(prev("up"), fail, opts({ confirmations: 1 })).next.state).toBe("down");
   });
-  test("down stays down on further failure, counter increments", () => {
+  test("down stays down on further failure, counter saturates at confirmations (no write)", () => {
     const r = evaluate(prev("down", 2), fail, opts());
-    expect(r.next).toEqual({ state: "down", consecutiveFailures: 3 });
+    expect(r.next).toEqual({ state: "down", consecutiveFailures: 2 });
     expect(r.transition).toBeNull();
+    expect(r.changed).toBe(false);
+  });
+  test("counter above confirmations (confirmations lowered) is left as is on failure", () => {
+    const r = evaluate(prev("down", 5), fail, opts({ confirmations: 2 }));
+    expect(r.next).toEqual({ state: "down", consecutiveFailures: 5 });
+    expect(r.changed).toBe(false);
+  });
+  test("counter reaching confirmations still transitions to down", () => {
+    const r = evaluate(prev("up", 2), fail, opts({ confirmations: 3 }));
+    expect(r.next).toEqual({ state: "down", consecutiveFailures: 3 });
     expect(r.changed).toBe(true);
   });
   test("maintenance + one fail leaves maintenance as pending", () => {

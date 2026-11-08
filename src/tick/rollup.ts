@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import {
   addTickResults,
   downtimeSeconds,
@@ -76,8 +76,12 @@ export const runRollup = async (env: Env, now: number): Promise<void> => {
 
   const intervals = new Map(monitorRows.map((m) => [m.id, m.intervalMin]));
   const groups = groupTicks(tickRows, new Set(intervals.keys()));
-  const days = [...new Set(groups.map((g) => g.day))];
   const lastMinute = tickRows[tickRows.length - 1]!.minute;
+  const today = utcDay(now);
+  // days the previous rollup may have left open (downtime counted only up to that rollup's "now")
+  const prevDay = snap.lastRollupMinute > 0 ? utcDay(snap.lastRollupMinute * MIN_MS) : null;
+  const openDay = prevDay !== null && prevDay < today ? prevDay : null;
+  const lowDay = [openDay, groups[0]?.day].filter((d) => d != null).sort()[0];
 
   const bars = parseJson<Record<string, Bar[]>>(snap.bars, {}, isRecord);
   const nextBars: Record<string, Bar[]> = Object.fromEntries(
@@ -85,15 +89,14 @@ export const runRollup = async (env: Env, now: number): Promise<void> => {
   );
   const statRows: (typeof dailyStats.$inferInsert)[] = [];
 
-  if (groups.length > 0) {
-    const from = dayStart(days[0]!);
-    const to = dayStart(days[days.length - 1]!) + DAY_MS;
+  if (lowDay !== undefined) {
+    const from = dayStart(lowDay);
     const [existing, windowEvents, priorEvents] = await db.batch([
-      db.select().from(dailyStats).where(inArray(dailyStats.day, days)),
+      db.select().from(dailyStats).where(gte(dailyStats.day, lowDay)),
       db
         .select({ monitorId: events.monitorId, toState: events.toState, at: events.at })
         .from(events)
-        .where(and(gte(events.at, from), lt(events.at, to)))
+        .where(and(gte(events.at, from), lt(events.at, now)))
         .orderBy(events.at, events.id),
       // SQLite returns the bare columns of the max(at) row per group
       db
@@ -104,18 +107,27 @@ export const runRollup = async (env: Env, now: number): Promise<void> => {
     ]);
 
     const statsByKey = new Map(existing.map((r) => [`${r.monitorId}|${r.day}`, r]));
+    const folded = new Set(groups.map((g) => `${g.monitorId}|${g.day}`));
+    // ended days with stats but no new ticks: recompute downtime through day end (idempotent)
+    const finalize: Group[] =
+      openDay === null
+        ? []
+        : existing
+            .filter((r) => r.day >= openDay && r.day < today && intervals.has(r.monitorId))
+            .filter((r) => !folded.has(`${r.monitorId}|${r.day}`))
+            .map((r) => ({ monitorId: r.monitorId, day: r.day, results: [] }));
     const eventsOf = (id: string): StateEvent[] => [
       ...priorEvents.filter((e) => e.monitorId === id),
       ...windowEvents.filter((e) => e.monitorId === id),
     ];
 
-    for (const g of groups) {
+    for (const g of [...groups, ...finalize].sort((a, b) => a.day.localeCompare(b.day))) {
       const start = dayStart(g.day);
-      const end = Math.min(start + DAY_MS, now);
+      const end = Math.max(start, Math.min(start + DAY_MS, now));
       const evs = eventsOf(g.monitorId);
       const inDay = evs.filter((e) => e.at >= start && e.at < end);
       const added = addTickResults(toDayStats(statsByKey.get(`${g.monitorId}|${g.day}`)), g.results, intervals.get(g.monitorId)!);
-      const stats: DayStats = { ...added, downtimeS: downtimeSeconds(inDay, stateAt(evs, start), start, Math.max(start, end)) };
+      const stats: DayStats = { ...added, downtimeS: downtimeSeconds(inDay, stateAt(evs, start), start, end) };
       statRows.push({ monitorId: g.monitorId, day: g.day, ...stats, hist: JSON.stringify(stats.hist) });
       nextBars[g.monitorId] = rollBars(nextBars[g.monitorId] ?? [], g.day, stats);
     }

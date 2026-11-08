@@ -20,7 +20,9 @@ const nextState = (prev: PrevState, r: CheckResult, o: EvalOpts): PrevState => {
     const slow = o.degradedThresholdMs !== null && r.latencyMs !== null && r.latencyMs > o.degradedThresholdMs;
     return { state: slow ? "degraded" : "up", consecutiveFailures: 0 };
   }
-  const failures = prev.consecutiveFailures + 1;
+  // saturate at confirmations so a monitor that stays down is not rewritten every check
+  const failures =
+    prev.consecutiveFailures >= o.confirmations ? prev.consecutiveFailures : prev.consecutiveFailures + 1;
   if (failures >= o.confirmations) return { state: "down", consecutiveFailures: failures };
   const leaving = prev.state === "paused" || prev.state === "maintenance";
   return { state: leaving ? "pending" : prev.state, consecutiveFailures: failures };
