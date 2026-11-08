@@ -28,7 +28,8 @@ const onInvalid = (
   if (!result.success) return c.json({ error: "validation", issues: result.error?.issues }, 400);
 };
 
-const isUnique = (e: unknown): boolean => /UNIQUE|constraint/i.test(String((e as Error)?.cause ?? e));
+const isUnique = (e: unknown): boolean =>
+  /UNIQUE constraint/i.test(`${(e as Error)?.message ?? ""} ${String((e as Error)?.cause ?? "")}`);
 
 groupsApi.get("/", async (c) => {
   const rows = await getDb(c.env).select().from(groups).orderBy(groups.sort, groups.name);

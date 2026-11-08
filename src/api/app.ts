@@ -13,11 +13,11 @@ app.get("/api/v1/health", (c) => c.json({ ok: true }));
 app.route("/beat", beat);
 app.route("/api/v1", publicApi);
 
-app.use("/api/admin/*", requireAdmin);
 app.use("/api/admin/*", async (c, next) => {
   await next();
   c.header("Cache-Control", "no-store");
 });
+app.use("/api/admin/*", requireAdmin);
 app.route("/api/admin", auth);
 app.route("/api/admin/monitors", monitorsApi);
 app.route("/api/admin/groups", groupsApi);

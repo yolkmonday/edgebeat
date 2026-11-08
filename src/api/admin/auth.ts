@@ -69,16 +69,18 @@ export const resetLoginLimiter = (): void => {
   limiter.start = 0;
   limiter.count = 0;
 };
-const isLimited = (now: number): boolean => {
-  if (now - limiter.start >= WINDOW_MS) resetLoginLimiter();
-  return limiter.count >= MAX_FAILURES;
-};
-const recordFailure = (now: number): void => {
+// reserve an attempt slot synchronously (before any await) so concurrent requests cannot all pass the check
+const reserveSlot = (now: number): boolean => {
   if (now - limiter.start >= WINDOW_MS) {
     limiter.start = now;
     limiter.count = 0;
   }
+  if (limiter.count >= MAX_FAILURES) return false;
   limiter.count += 1;
+  return true;
+};
+const releaseSlot = (): void => {
+  limiter.count = Math.max(0, limiter.count - 1);
 };
 
 const passwordMatches = async (given: string, expected: string): Promise<boolean> => {
@@ -114,17 +116,17 @@ export const auth = new Hono<AppEnv>();
 
 auth.post("/login", async (c) => {
   const now = Date.now();
-  if (isLimited(now)) return c.json({ error: "too_many_attempts" }, 429);
+  if (!reserveSlot(now)) return c.json({ error: "too_many_attempts" }, 429);
   const body: unknown = await c.req.json().catch(() => null);
   const password =
     body && typeof body === "object" && typeof (body as { password?: unknown }).password === "string"
       ? (body as { password: string }).password
       : "";
   if (!(await passwordMatches(password, c.env.ADMIN_PASSWORD ?? ""))) {
-    recordFailure(now);
     await sleep(FAIL_DELAY_MS);
     return c.json({ error: "invalid_credentials" }, 401);
   }
+  releaseSlot();
   let jwt: string;
   try {
     jwt = await signSession(c.env, Math.floor(now / 1000));

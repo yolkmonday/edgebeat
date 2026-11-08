@@ -81,6 +81,7 @@ describe("auth", () => {
   it("rejects unauthenticated requests", async () => {
     const res = await call(null, "GET", "/monitors");
     expect(res.status).toBe(401);
+    expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
   it("login sets a hardened cookie and the cookie works", async () => {
@@ -130,6 +131,20 @@ describe("auth", () => {
     }
     expect((await run({ ADMIN_PASSWORD: "" }, "")).status).toBe(401);
   });
+
+  it("concurrent bad logins cannot bypass the rate limit", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 20 }, async () => {
+        const start = Date.now();
+        const res = await login("bad");
+        return { status: res.status, ms: Date.now() - start };
+      }),
+    );
+    const limited = results.filter((r) => r.status === 429);
+    expect(limited.length).toBeGreaterThanOrEqual(10);
+    expect(results.filter((r) => r.status === 401).length).toBeLessThanOrEqual(10);
+    for (const r of limited) expect(r.ms).toBeLessThan(450);
+  }, 20_000);
 
   it("logout clears the cookie", async () => {
     const res = await call(cookie, "POST", "/logout");
