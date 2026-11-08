@@ -12,5 +12,6 @@
     "resolveJsonModule": true,
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "test", "*.ts"]
+  "include": ["src", "test", "*.ts"],
+  "exclude": ["src/status-page"]
 }

@@ -1,9 +1,5 @@
-import { mkdirSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
-
-// wrangler config points assets at dist/status-page; make sure it exists for tests
-mkdirSync("dist/status-page", { recursive: true });
 
 const migrations = await readD1Migrations("migrations");
 
@@ -25,6 +21,7 @@ export default defineConfig({
   resolve: { alias: { "@": new URL("./src", import.meta.url).pathname } },
   test: {
     include: ["test/worker/**/*.spec.ts"],
+    globalSetup: ["./test/worker/global-setup.ts"],
     setupFiles: ["./test/worker/apply-migrations.ts"],
   },
 });
