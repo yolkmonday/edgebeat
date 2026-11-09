@@ -11,6 +11,7 @@ const overview = (lastTickAt: number | null): Overview => ({
   counts: { up: 0, degraded: 0, down: 0, maintenance: 0, paused: 0, pending: 0, unknown: 0 },
   totals: { all: 0, checks: 0, heartbeats: 0 },
   usage: {
+    analytics: "off",
     checksPerMinute: { used: 0, budget: 40, plan: "free" },
     d1WritesToday: { value: 0, projected: 0, limit: 100_000, source: "estimate" },
     requestsToday: null,
