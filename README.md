@@ -48,8 +48,10 @@ bunx wrangler login
 ```sh
 bunx wrangler secret put ADMIN_PASSWORD   # at least 12 characters; login is refused otherwise
 bunx wrangler secret put ENCRYPTION_KEY   # base64 of 32 random bytes: openssl rand -base64 32
-bun run deploy                            # builds the page, applies migrations (remote), deploys
+bun run deploy                            # builds the page, deploys, then applies migrations (remote)
 ```
+
+`bun run deploy` deploys before migrating because the first deploy is what creates the D1 database. For the few seconds until the migrations finish, the Worker runs without its tables: cron ticks and status requests fail harmlessly and recover on their own.
 
 ## Local development
 

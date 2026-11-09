@@ -27,7 +27,7 @@
     "test": "bun test && vitest run && bun --cwd cli test",
     "build": "vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/status-page",
-    "deploy": "vite build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "deploy": "vite build && wrangler deploy && wrangler d1 migrations apply DB --remote",
     "dev": "vite build && wrangler dev --test-scheduled",
     "db:generate": "drizzle-kit generate"
   },
