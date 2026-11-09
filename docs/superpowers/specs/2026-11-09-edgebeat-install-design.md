@@ -38,7 +38,7 @@ Worker. The dashboard never becomes the place where monitoring lives.
 - All three paths produce the **same** installation (same Worker name
   pattern, same D1, same secrets, same migrations), so docs and support are
   written once.
-- An installed Edgebeat keeps working if the dashboard or `edgebeat.sh` is
+- An installed Edgebeat keeps working if the hosted installer (`yolkwork.co/edgebeat`) is
   down or disappears forever.
 
 ### Goals
@@ -61,7 +61,7 @@ Worker. The dashboard never becomes the place where monitoring lives.
 
 ### Anti-goals (failure even if it "works")
 - The dashboard **keeps standing access** to users' Cloudflare accounts.
-- An installed Edgebeat **depends on** the dashboard or `edgebeat.sh` at
+- An installed Edgebeat **depends on** the hosted installer at
   runtime.
 - The three paths drift and produce different installations.
 - Install half-fails and leaves the user with a broken Worker and no clear
@@ -110,7 +110,7 @@ Worker. The dashboard never becomes the place where monitoring lives.
             │ Cloudflare REST client (token in, nothing stored)                            │
             └───────▲───────────────────────────────▲──────────────────────────────────────┘
                     │                               │
-   CLI `edgebeat` (npm)                      Hosted installer (Worker on edgebeat.sh)
+   CLI `edgebeat` (npm)                      Hosted installer (yolkwork.co/edgebeat)
    OAuth PKCE or --api-token                 OAuth code flow, token in memory only
                     │                               │
                     └──────────► user's Cloudflare account ◄──────┘
@@ -181,8 +181,9 @@ bundle, never raw source.
   `deploy` script step that creates/looks up the D1 by name. [call]
 
 ### 3.5 Hosted installer dashboard [owner: installer only]
-- Lives at `edgebeat.sh` (e.g. `edgebeat.sh/install`) [call]; a separate
-  Worker in its own repo (`edgebeat-dev/edgebeat-cloud`) [call], so the OSS
+- Lives at **`yolkwork.co/edgebeat`** (landing page + "Continue with
+  Cloudflare") as part of the owner's Yolkwork project [owner, 2026-11-09],
+  not in the OSS repo [call], so the OSS
   repo stays self-contained. Stack per owner defaults: Hono on Workers, React
   + Vite + Tailwind + shadcn for the UI.
 - **Sign-up = "Continue with Cloudflare"** (OAuth). No separate password,
@@ -218,7 +219,7 @@ bundle, never raw source.
 3. **Plan 3**: admin UI with first-run wizard (both audiences need it to add
    monitors without curl).
 4. **Install plan B**: hosted installer dashboard (needs the public OAuth
-   client and domain verification on `edgebeat.sh`).
+   client and domain verification on `yolkwork.co`).
 
 ---
 
@@ -227,7 +228,7 @@ bundle, never raw source.
 - Create GitHub org `edgebeat-dev` and make the repo public (Deploy button
   needs a public repo).
 - Register a Cloudflare **public OAuth client** for Edgebeat (name, logo,
-  `edgebeat.sh` DNS verification, redirect URIs for the CLI localhost
+  `yolkwork.co` DNS verification, redirect URIs for the CLI localhost
   callback and the dashboard).
 - Reserve npm package name `edgebeat`.
 - Run the Deploy-button and CLI installs once on a throwaway free account.
