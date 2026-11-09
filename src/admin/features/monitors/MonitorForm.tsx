@@ -119,7 +119,11 @@ export const MonitorForm = ({ monitor, initialType }: MonitorFormProps) => {
   const v = watch();
 
   // in-app navigation (sidebar, breadcrumb, back button) asks first; tab close / reload use beforeunload below
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => isDirty && !allowLeave.current && currentLocation.pathname !== nextLocation.pathname);
+  // the login redirect after a session expiry (401) must never be held back by the dialog
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isDirty && !allowLeave.current && currentLocation.pathname !== nextLocation.pathname && !/\/login\/?$/.test(nextLocation.pathname),
+  );
   const blocked = blocker.state === "blocked";
 
   useEffect(() => {
