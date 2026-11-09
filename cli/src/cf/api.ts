@@ -1,7 +1,9 @@
-import type { Account, CloudflareApi, D1Info, InstallSource } from "../contracts";
+import type { Account, CloudflareApi, D1Info, InstallSource, ScriptInfo } from "../contracts";
 import { uploadAssetFiles } from "./assets";
 import { createHttp, isNotFound, type Timeouts } from "./http";
-import { makeInstallError } from "../contracts";
+import { INSTALL_SOURCE_BINDING, makeInstallError, VERSION_BINDING } from "../contracts";
+
+const INSTALL_SOURCES: readonly string[] = ["cli", "cloud", "git"] satisfies InstallSource[];
 
 const DEFAULT_BASE = "https://api.cloudflare.com/client/v4";
 
@@ -41,39 +43,47 @@ export const createCloudflareApi = (
   };
 
   return {
-    verifyToken: async () => {
+    verifyToken: async (accountId) => {
       const missing: string[] = [];
       let accounts: Account[] | null = null;
       let status: string | undefined;
+      // Only HTTP rejections fall back; network errors and timeouts propagate.
+      const accountVerify = async (id: string): Promise<string | undefined> => {
+        try {
+          return (await http.json<{ status?: string }>("GET", `${acc(id)}/tokens/verify`)).status;
+        } catch (ae) {
+          if (typeof (ae as { status?: unknown }).status !== "number") throw ae;
+          return undefined;
+        }
+      };
       try {
         status = (await http.json<{ status?: string }>("GET", "/user/tokens/verify")).status;
       } catch (e) {
-        // Only HTTP rejections fall back; network errors and timeouts propagate.
         if (typeof (e as { status?: unknown }).status !== "number") throw e;
-        const verifyFailed = makeInstallError(
-          "api_error",
-          "Could not verify the API token. Check that it is correct and has not expired.",
-        );
-        try {
-          accounts = await listAccounts();
-        } catch (le) {
-          if (isMissingPermission(le)) {
-            throw makeInstallError(
-              "missing_permission",
-              "The API token could not be verified and cannot list accounts: add Account · Account Settings · Read.",
-            );
-          }
-          throw verifyFailed;
-        }
-        for (const a of accounts) {
+        if (accountId) status = await accountVerify(accountId);
+        if (status === undefined) {
+          const verifyFailed = makeInstallError(
+            "api_error",
+            "Could not verify the API token. Check that it is correct and has not expired.",
+          );
           try {
-            status = (await http.json<{ status?: string }>("GET", `${acc(a.id)}/tokens/verify`)).status;
-            break;
-          } catch (ae) {
-            if (typeof (ae as { status?: unknown }).status !== "number") throw ae;
+            accounts = await listAccounts();
+          } catch (le) {
+            if (isMissingPermission(le)) {
+              throw makeInstallError(
+                "missing_permission",
+                "The API token could not be verified and cannot list accounts: add Account · Account Settings · Read.",
+              );
+            }
+            throw verifyFailed;
           }
+          for (const a of accounts) {
+            if (a.id === accountId) continue;
+            status = await accountVerify(a.id);
+            if (status !== undefined) break;
+          }
+          if (status === undefined) throw verifyFailed;
         }
-        if (status === undefined) throw verifyFailed;
       }
       if (status !== "active") return { ok: false, missing: [] };
       const probe = async (label: string, fn: () => Promise<unknown>) => {
@@ -89,10 +99,11 @@ export const createCloudflareApi = (
           accounts = await listAccounts();
         });
       }
-      const first = (accounts as Account[] | null)?.[0];
-      if (first) {
-        await probe("Account · Workers Scripts · Edit", () => http.json("GET", `${acc(first.id)}/workers/scripts`));
-        await probe("Account · D1 · Edit", () => http.json("GET", `${acc(first.id)}/d1/database?per_page=10`));
+      // Probe the account the install will write to (R15); without one, the first the token sees.
+      const target = accountId ?? (accounts as Account[] | null)?.[0]?.id;
+      if (target) {
+        await probe("Account · Workers Scripts · Edit", () => http.json("GET", `${acc(target)}/workers/scripts`));
+        await probe("Account · D1 · Edit", () => http.json("GET", `${acc(target)}/d1/database?per_page=10`));
       }
       return { ok: missing.length === 0, missing };
     },
@@ -120,6 +131,24 @@ export const createCloudflareApi = (
       if (res.status === 404) return false;
       return http.parse<boolean>(res, "GET", path);
     },
+    getScriptInfo: async (accountId, name) => {
+      type Binding = { type?: string; name?: string; text?: string };
+      let settings: { bindings?: Binding[] } | null;
+      try {
+        settings = await http.json<{ bindings?: Binding[] } | null>("GET", `${script(accountId, name)}/settings`);
+      } catch (e) {
+        if (isNotFound(e)) return null;
+        throw e;
+      }
+      const text = (n: string): string | undefined =>
+        settings?.bindings?.find((b) => b.type === "plain_text" && b.name === n)?.text;
+      const info: ScriptInfo = {};
+      const source = text(INSTALL_SOURCE_BINDING);
+      if (source !== undefined && INSTALL_SOURCES.includes(source)) info.installSource = source as InstallSource;
+      const version = text(VERSION_BINDING);
+      if (version) info.version = version;
+      return info;
+    },
     listD1,
     createD1: async (accountId, name) => {
       const r = await http.json<{ uuid: string; name: string }>("POST", `${acc(accountId)}/d1/database`, { name });
@@ -129,7 +158,7 @@ export const createCloudflareApi = (
       const r = await http.json<{ results?: Record<string, unknown>[] }[]>(
         "POST",
         `${acc(accountId)}/d1/database/${uuid}/query`,
-        { sql, params },
+        params.length > 0 ? { sql, params } : { sql },
       );
       return r.flatMap((x) => x.results ?? []);
     },

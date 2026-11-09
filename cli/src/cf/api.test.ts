@@ -341,3 +341,70 @@ describe("fix round 1", () => {
     expect(err.message).toContain("Asset upload session expired");
   });
 });
+
+describe("final review fixes", () => {
+  test("getScriptInfo reads source and version from the script settings bindings", async () => {
+    const { api, calls } = harness(() =>
+      env({
+        bindings: [
+          { type: "d1", name: "DB", id: "u1" },
+          { type: "plain_text", name: "EDGEBEAT_INSTALL_SOURCE", text: "cloud" },
+          { type: "plain_text", name: "EDGEBEAT_VERSION", text: "0.2.0" },
+          { type: "secret_text", name: "ADMIN_PASSWORD" },
+        ],
+        compatibility_date: "2026-11-01",
+      }),
+    );
+    expect(await api.getScriptInfo("a1", "w")).toEqual({ installSource: "cloud", version: "0.2.0" });
+    expect(calls[0]!.method).toBe("GET");
+    expect(calls[0]!.url).toBe("https://cf.test/v4/accounts/a1/workers/scripts/w/settings");
+  });
+
+  test("getScriptInfo: 404 -> null, no bindings -> empty info, unknown source ignored, errors mapped", async () => {
+    expect(await harness(() => fail(404, 10007, "This Worker does not exist")).api.getScriptInfo("a1", "w")).toBeNull();
+    expect(await harness(() => env({})).api.getScriptInfo("a1", "w")).toEqual({});
+    expect(
+      await harness(() =>
+        env({ bindings: [{ type: "plain_text", name: "EDGEBEAT_INSTALL_SOURCE", text: "nope" }] }),
+      ).api.getScriptInfo("a1", "w"),
+    ).toEqual({});
+    expect((await harness(() => fail(500, 1, "boom")).api.getScriptInfo("a1", "w").catch((e) => e)).code).toBe(
+      "api_error",
+    );
+    expect((await harness(() => fail(403, 10000, "x")).api.getScriptInfo("a1", "w").catch((e) => e)).code).toBe(
+      "missing_permission",
+    );
+  });
+
+  test("verifyToken(accountId) probes the chosen account, not the first listed", async () => {
+    const { api, calls } = harness((r) => {
+      if (r.url.endsWith("/user/tokens/verify")) return env({ status: "active" });
+      if (r.url.includes("/accounts?")) return env([{ id: "a1", name: "A" }, { id: "a2", name: "B" }]);
+      if (r.url.includes("/accounts/a2/d1/")) return fail(403, 10000, "no");
+      return env([]);
+    });
+    expect(await api.verifyToken("a2")).toEqual({ ok: false, missing: ["Account · D1 · Edit"] });
+    expect(calls.some((c) => c.url.includes("/accounts/a1/workers") || c.url.includes("/accounts/a1/d1"))).toBe(false);
+    expect(calls.some((c) => c.url.endsWith("/accounts/a2/workers/scripts"))).toBe(true);
+  });
+
+  test("verifyToken(accountId) falls back to that account's token verify first", async () => {
+    const { api, calls } = harness((r) => {
+      if (r.url.endsWith("/user/tokens/verify")) return fail(401, 1000, "Invalid API Token");
+      if (r.url.endsWith("/accounts/a2/tokens/verify")) return env({ status: "active" });
+      if (r.url.includes("/accounts?")) return env([{ id: "a1", name: "A" }, { id: "a2", name: "B" }]);
+      if (r.url.includes("/tokens/verify")) return fail(403, 1000, "nope");
+      return env([]);
+    });
+    expect(await api.verifyToken("a2")).toEqual({ ok: true, missing: [] });
+    expect(calls.some((c) => c.url.endsWith("/accounts/a1/tokens/verify"))).toBe(false);
+  });
+
+  test("queryD1 omits params when there are none", async () => {
+    const { api, calls } = harness(() => env([{ results: [] }]));
+    await api.queryD1("a1", "u1", "select 1");
+    await api.queryD1("a1", "u1", "select 1", []);
+    expect(JSON.parse(calls[0]!.body as string)).toEqual({ sql: "select 1" });
+    expect(JSON.parse(calls[1]!.body as string)).toEqual({ sql: "select 1" });
+  });
+});

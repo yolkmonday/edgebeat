@@ -26,13 +26,22 @@ export type ScriptBinding =
   | { type: "assets"; name: string }
   | { type: "plain_text"; name: string; text: string };
 
+// Plain-text Worker variables that identify an Edgebeat install through the Cloudflare API (R13).
+export const INSTALL_SOURCE_BINDING = "EDGEBEAT_INSTALL_SOURCE";
+export const VERSION_BINDING = "EDGEBEAT_VERSION";
+
+// Read from the script's settings bindings; a field is absent when its binding is missing or unknown.
+export type ScriptInfo = { installSource?: InstallSource; version?: string };
+
 export type CloudflareApi = {
-  verifyToken(): Promise<{ ok: boolean; missing: string[] }>; // missing = permission labels from Global Constraints
+  // missing = permission labels from Global Constraints; probes `accountId` when given, else the first account.
+  verifyToken(accountId?: string): Promise<{ ok: boolean; missing: string[] }>;
   listAccounts(): Promise<Account[]>;
   getSubdomain(accountId: string): Promise<string | null>;
   createSubdomain(accountId: string, subdomain: string): Promise<void>;
   countWorkers(accountId: string): Promise<number>;
   scriptExists(accountId: string, name: string): Promise<boolean>;
+  getScriptInfo(accountId: string, name: string): Promise<ScriptInfo | null>; // null = no script with that name
   listD1(accountId: string): Promise<D1Info[]>;
   createD1(accountId: string, name: string): Promise<D1Info>;
   queryD1(accountId: string, uuid: string, sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>;

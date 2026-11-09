@@ -1,16 +1,19 @@
 // In-memory CloudflareApi for tests. Every call that would change the account is
 // recorded in `state.writes`; reads (including SELECT queries) are not.
 import {
+  INSTALL_SOURCE_BINDING,
   makeInstallError,
+  VERSION_BINDING,
   type Account,
   type CloudflareApi,
   type InstallSource,
   type ReleaseManifest,
   type ScriptBinding,
+  type ScriptInfo,
 } from "../contracts";
 
 export type FakeScript = {
-  version: string | null; // null = a foreign (non-Edgebeat) worker
+  version: string | null; // code version health answers with; null = a foreign (non-Edgebeat) worker
   bindings: ScriptBinding[];
   secrets: Record<string, string>;
   crons: string[];
@@ -33,6 +36,7 @@ export type HealthAnswer = { ok: boolean; version?: string; installSource?: Inst
 
 export type FakeState = {
   verify: { ok: boolean; missing: string[] };
+  verifiedAccounts: (string | undefined)[]; // accountId of every verifyToken call
   accounts: Account[];
   subdomain: string | null;
   otherWorkers: number; // workers in the account besides `scripts`
@@ -46,10 +50,12 @@ const MIGRATION_INSERT = /INSERT INTO d1_migrations \(name\) VALUES \('((?:[^']|
 
 const isRead = (sql: string): boolean => /^\s*(SELECT|PRAGMA)\b/i.test(sql);
 
-const sourceOf = (bindings: ScriptBinding[]): InstallSource | undefined => {
-  const b = bindings.find((x) => x.type === "plain_text" && x.name === "EDGEBEAT_INSTALL_SOURCE");
-  return b?.type === "plain_text" ? (b.text as InstallSource) : undefined;
+const plainText = (bindings: ScriptBinding[], name: string): string | undefined => {
+  const b = bindings.find((x) => x.type === "plain_text" && x.name === name);
+  return b?.type === "plain_text" ? b.text : undefined;
 };
+const sourceOf = (bindings: ScriptBinding[]): InstallSource | undefined =>
+  plainText(bindings, INSTALL_SOURCE_BINDING) as InstallSource | undefined;
 
 export const fakeScript = (over: Partial<FakeScript> = {}): FakeScript => ({
   version: null,
@@ -65,6 +71,7 @@ export const fakeScript = (over: Partial<FakeScript> = {}): FakeScript => ({
 export const createFakeApi = (seed: Partial<FakeState> = {}): CloudflareApi & { state: FakeState } => {
   const state: FakeState = {
     verify: { ok: true, missing: [] },
+    verifiedAccounts: [],
     accounts: [{ id: "acc", name: "Account" }],
     subdomain: null,
     otherWorkers: 0,
@@ -114,7 +121,10 @@ export const createFakeApi = (seed: Partial<FakeState> = {}): CloudflareApi & { 
 
   return {
     state,
-    verifyToken: async () => state.verify,
+    verifyToken: async (accountId) => {
+      state.verifiedAccounts.push(accountId);
+      return state.verify;
+    },
     listAccounts: async () => state.accounts,
     getSubdomain: async () => state.subdomain,
     createSubdomain: async (accountId, subdomain) => {
@@ -123,6 +133,17 @@ export const createFakeApi = (seed: Partial<FakeState> = {}): CloudflareApi & { 
     },
     countWorkers: async () => state.otherWorkers + Object.keys(state.scripts).length,
     scriptExists: async (_accountId, name) => name in state.scripts,
+    // Mirrors GET …/scripts/{name}/settings: identity comes from bindings only, never from health.
+    getScriptInfo: async (_accountId, name) => {
+      const s = state.scripts[name];
+      if (!s) return null;
+      const info: ScriptInfo = {};
+      const source = sourceOf(s.bindings);
+      if (source) info.installSource = source;
+      const version = plainText(s.bindings, VERSION_BINDING);
+      if (version) info.version = version;
+      return info;
+    },
     listD1: async () => state.d1.map(({ uuid, name }) => ({ uuid, name })),
     createD1: async (accountId, name) => {
       write("createD1", accountId, name);
