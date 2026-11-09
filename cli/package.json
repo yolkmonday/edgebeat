@@ -6,7 +6,7 @@
   "type": "module",
   "bin": { "edgebeat": "dist/bin.js" },
   "exports": { "./installer": "./dist/installer/index.js" },
-  "files": ["dist", "bundle"],
+  "files": ["dist", "bundle", "LICENSE"],
   "engines": { "node": ">=20" },
   "scripts": {
     "test": "bun test ./src ./test",

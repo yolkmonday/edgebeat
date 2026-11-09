@@ -12,15 +12,18 @@ On the free plan a Worker invocation may make 50 subrequests, and every redirect
 
 ## Install
 
-Three paths, in order of effort. All of them need a Cloudflare account.
+Three paths, in order of effort. All of them need a Cloudflare account. Today only the manual path (3) works; the other two are not available yet.
 
-### 1. CLI
+### 1. CLI (coming soon — not yet published)
+
+The `edgebeat` package is not on npm yet, so this command does not work today.
 
 ```sh
+export CLOUDFLARE_API_TOKEN=...   # preferred over --api-token, which shows up in ps and shell history
 bunx edgebeat setup
 ```
 
-The CLI asks for a Cloudflare API token and installs the Worker, its D1 database and secrets. Create the token with these permissions:
+The CLI reads the token from `CLOUDFLARE_API_TOKEN` (or asks for it, hidden) and installs the Worker, its D1 database and secrets. Create the token with these permissions:
 
 - `Account · Workers Scripts · Edit`
 - `Account · D1 · Edit`
@@ -28,11 +31,11 @@ The CLI asks for a Cloudflare API token and installs the Worker, its D1 database
 
 The token is never written to disk. The generated admin password is printed once.
 
-### 2. Deploy to Cloudflare button
+### 2. Deploy to Cloudflare button (coming soon — not yet verified)
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/edgebeat-dev/edgebeat)
 
-Requires a GitHub account (Cloudflare copies the repository into it). Updates by pulling upstream and redeploying.
+Not yet verified end to end on a real account; use the manual path until it is. Requires a GitHub account (Cloudflare copies the repository into it). Updates by pulling upstream and redeploying.
 
 ### 3. Manual
 

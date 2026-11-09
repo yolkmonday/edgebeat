@@ -138,6 +138,8 @@ bundle, never raw source.
   1. Verify token and permissions; list accounts the token can see.
   2. Check limits up front (cron slots, Worker count, D1 count) and fail
      with a plain-language message before changing anything.
+     [amended 2026-11-09, R14] No up-front D1-count refusal (D1 creation
+     reports a real limit before other writes); 100+ Workers is a warning.
   3. Ensure account workers.dev subdomain (if missing, ask the user for one).
   4. Find or create D1 `edgebeat` (re-use if it exists and has Edgebeat
      tables).
@@ -150,6 +152,9 @@ bundle, never raw source.
      random bytes, base64); `ADMIN_PASSWORD` from the user or generated.
   8. Set the cron schedule; enable the workers.dev route for the script.
   9. Smoke check: `GET https://<worker>.<subdomain>.workers.dev/api/v1/health`.
+     [amended 2026-11-09] Smoke check only: if it does not answer in time the
+     install still succeeds with a warning (`*.workers.dev` can be blocked by
+     the user's ISP); it never decides whether Edgebeat is installed.
 - **Update** = same steps with a newer bundle; secrets and D1 data are never
   overwritten; migrations are forward-only.
 - Output: status page URL, admin URL, and the admin password **once** (only
@@ -196,7 +201,8 @@ bundle, never raw source.
   install finishes or fails. No refresh token requested. [call]
 - **Update**: the user comes back, signs in again, the dashboard detects the
   installed version (from the Worker's `/api/v1/health` version field) and
-  offers "Update to vX".
+  offers "Update to vX". [amended 2026-11-09] Read it from the script's
+  `EDGEBEAT_VERSION` binding through the Cloudflare API instead (see §6).
 - Stores at most: Cloudflare user id (from OAuth), account id, worker URL,
   installed version, timestamps — to show "your installations" and update
   notices. Never tokens, never passwords, never email. [call]
@@ -246,8 +252,11 @@ bundle, never raw source.
   the installer.
 - **D1 name = Worker name.** The installer finds or creates a D1 named
   exactly like the Worker (default `edgebeat`). Two instances never share a
-  database. "Already installed" = a Worker with that name whose health
-  endpoint answers with an Edgebeat version.
+  database. [amended 2026-11-09] "Already installed" is read from the
+  Cloudflare API, not workers.dev: a Worker with that name whose settings
+  bindings include `EDGEBEAT_INSTALL_SOURCE` (every upload also sets
+  plain-text `EDGEBEAT_VERSION` = bundle version). A Worker without it is a
+  name clash.
 - **Where the code lives.** The OSS repo root stays the Worker (the Deploy
   button needs a self-contained root). The installer core and the CLI live in
   one npm package `edgebeat`, in `cli/` with its own `package.json` (not a
