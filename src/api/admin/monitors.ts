@@ -21,6 +21,7 @@ import {
   isUnique,
   parseHeaders,
   pauseLifecycle,
+  redactMonitor,
   toApiMonitor,
   toColumns,
   withoutUndefined,
@@ -60,6 +61,10 @@ const findRow = async (c: AppContext, id: string): Promise<Row | undefined> =>
   (await getDb(c.env).select().from(monitors).where(eq(monitors.id, id)).limit(1))[0];
 
 const origin = (c: AppContext) => new URL(c.req.url).origin;
+
+/** Read-scope tokens never see the beat url or header values. */
+const redactFor = <T extends ApiMonitor>(c: AppContext, m: T): T =>
+  c.get("auth")?.scope === "read" ? redactMonitor(m) : m;
 
 const toBudgetMonitor = (r: Pick<Row, "id" | "type" | "intervalMin" | "paused">): BudgetMonitor => ({
   id: r.id,
@@ -114,13 +119,13 @@ monitorsApi.get("/", async (c) => {
       .where(eq(snapshot.id, 1)),
     db.select().from(heartbeats),
   ]);
-  const view = readSnapshot(snap, now);
+  const snapView = readSnapshot(snap, now);
   const beatById = new Map(beats.map((h) => [h.monitorId, h]));
   const list: Monitor[] = rows.map((r) => ({
     ...toApiMonitor(r, origin(c)),
-    status: statusOf(r, view, beatById.get(r.id), now),
+    status: statusOf(r, snapView, beatById.get(r.id), now),
   }));
-  return c.json(list);
+  return c.json(list.map((m) => redactFor(c, m)));
 });
 
 monitorsApi.post("/", zValidator("json", monitorInput, onInvalid), async (c) => {
@@ -176,7 +181,7 @@ monitorsApi.get("/:id", async (c) => {
     bars: alignBars(found.view.bars[found.row.id] ?? [], found.now),
     events: recent.map(toStateEvent),
   };
-  return c.json(body);
+  return c.json(redactFor(c, body));
 });
 
 monitorsApi.patch("/:id", zValidator("json", monitorPatch, onInvalid), async (c) => {
