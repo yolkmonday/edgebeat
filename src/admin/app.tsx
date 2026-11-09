@@ -1,10 +1,11 @@
 import { useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter } from "react-router";
+import { RouterProvider } from "react-router";
 import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { setUnauthorizedHandler } from "@/lib/api";
 import { queryClient } from "@/lib/query-client";
-import { AppRoutes } from "@/routes";
+import { router } from "@/routes";
 import { useUi } from "@/stores/ui";
 
 // any 401 outside /login means the session is gone: drop cached data and go sign in again
@@ -29,9 +30,9 @@ export const App = () => {
   useThemeSync();
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename="/admin">
-        <AppRoutes />
-      </BrowserRouter>
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
       <Toaster />
     </QueryClientProvider>
   );

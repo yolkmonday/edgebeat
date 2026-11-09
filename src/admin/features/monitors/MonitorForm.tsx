@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CircleAlert, Plus, X } from "lucide-react";
 import { useForm, type FieldErrors, type Resolver } from "react-hook-form";
-import { useNavigate } from "react-router";
+import { useBlocker, useNavigate } from "react-router";
 import { toast } from "sonner";
 import type { Monitor } from "@shared/admin-api";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ import { useSettings } from "@/api/use-settings";
 import { fieldErrors, isApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { BudgetCard } from "@/features/monitors/BudgetCard";
+import { budgetExceededMessage } from "@/features/monitors/budget-error";
 import { DownExplainer } from "@/features/monitors/DownExplainer";
 import { explainInputFromForm } from "@/features/monitors/down-explainer";
 import {
@@ -117,7 +118,10 @@ export const MonitorForm = ({ monitor, initialType }: MonitorFormProps) => {
   });
   const v = watch();
 
-  // in-app navigation can't be blocked in declarative mode; at least guard tab close / reload
+  // in-app navigation (sidebar, breadcrumb, back button) asks first; tab close / reload use beforeunload below
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => isDirty && !allowLeave.current && currentLocation.pathname !== nextLocation.pathname);
+  const blocked = blocker.state === "blocked";
+
   useEffect(() => {
     if (!isDirty) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -160,10 +164,9 @@ export const MonitorForm = ({ monitor, initialType }: MonitorFormProps) => {
         setServerError("Something went wrong. Try again.");
         return;
       }
-      if (e.code === "budget_exceeded") {
-        const after = e.body?.after;
-        const budget = e.body?.budget;
-        setServerError(`Over your check budget: ${after ?? "?"} of ${budget ?? "?"} per minute. Raise intervals or switch to the Paid plan in Settings.`);
+      const budgetMessage = budgetExceededMessage(e);
+      if (budgetMessage) {
+        setServerError(budgetMessage);
         return;
       }
       const mapped = Object.entries(fieldErrors(e));
@@ -374,14 +377,21 @@ export const MonitorForm = ({ monitor, initialType }: MonitorFormProps) => {
         </aside>
       </div>
       <ConfirmDialog
-        open={discardOpen}
-        onOpenChange={setDiscardOpen}
+        open={discardOpen || blocked}
+        onOpenChange={(open) => {
+          setDiscardOpen(open);
+          if (!open && blocker.state === "blocked") blocker.reset();
+        }}
         title="Discard changes?"
         body="You have unsaved changes. If you leave now they are lost."
         confirmLabel="Discard"
         destructive
         onConfirm={() => {
           allowLeave.current = true;
+          if (blocker.state === "blocked") {
+            blocker.proceed();
+            return;
+          }
           navigate(monitor ? `/monitors/${monitor.id}` : "/monitors");
         }}
       />

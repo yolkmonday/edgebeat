@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes } from "react-router";
+import { createBrowserRouter, createRoutesFromElements, Outlet, Route } from "react-router";
 
 // Route table (fixed in task 0). Each page module is owned by a later task; replace the module, not this file.
 const LoginPage = lazy(() => import("@/features/auth/LoginPage"));
@@ -16,9 +16,16 @@ const StatusPageSettingsPage = lazy(() => import("@/features/status-page/StatusP
 const SettingsPage = lazy(() => import("@/features/settings/SettingsPage"));
 const EventsPage = lazy(() => import("@/features/events/EventsPage"));
 
-export const AppRoutes = () => (
+const Lazy = () => (
   <Suspense fallback={null}>
-    <Routes>
+    <Outlet />
+  </Suspense>
+);
+
+/** Data router (not <BrowserRouter>) so pages can use `useBlocker` for unsaved-changes guards. */
+export const router = createBrowserRouter(
+  createRoutesFromElements(
+    <Route element={<Lazy />}>
       <Route path="login" element={<LoginPage />} />
       <Route path="setup" element={<SetupPage />} />
       <Route element={<AppLayout />}>
@@ -34,6 +41,7 @@ export const AppRoutes = () => (
         <Route path="events" element={<EventsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
-    </Routes>
-  </Suspense>
+    </Route>,
+  ),
+  { basename: "/admin" },
 );
