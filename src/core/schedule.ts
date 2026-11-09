@@ -32,5 +32,11 @@ export const selectChecks = (
   return { run: candidates.slice(0, budget), carry: candidates.slice(budget) };
 };
 
+const FREE_CHECK_BUDGET = 40;
+const PAID_CHECK_BUDGET = 500;
+
+/** Free plan never exceeds 40 checks per tick (50 subrequests − retries − alerts); an override may only lower it. */
 export const checkBudget = (plan: "free" | "paid", override?: number): number =>
-  override ?? (plan === "free" ? 40 : 500);
+  plan === "free"
+    ? Math.min(override ?? FREE_CHECK_BUDGET, FREE_CHECK_BUDGET)
+    : (override ?? PAID_CHECK_BUDGET);

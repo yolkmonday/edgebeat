@@ -74,4 +74,8 @@ describe("checkBudget", () => {
     expect(checkBudget("paid")).toBe(500);
     expect(checkBudget("free", 25)).toBe(25);
   });
+  test("free override is clamped to 40, paid is not", () => {
+    expect(checkBudget("free", 200)).toBe(40);
+    expect(checkBudget("paid", 2000)).toBe(2000);
+  });
 });
