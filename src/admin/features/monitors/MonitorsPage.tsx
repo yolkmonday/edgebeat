@@ -1,4 +1,5 @@
-// placeholder: replaced by the task that owns this route
+import { MonitorList } from "@/features/monitors/MonitorList";
+
 export default function MonitorsPage() {
-  return <div>MonitorsPage</div>;
+  return <MonitorList kind="monitors" />;
 }
