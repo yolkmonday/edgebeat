@@ -61,7 +61,7 @@ export const uploadAssetFiles = async (
       form.append(hash, new Blob([toBase64(file.bytes)], { type }), hash);
     }
     const path = `/accounts/${accountId}/workers/assets/upload?base64=true`;
-    const res = await http.raw("POST", path, { token: session.jwt, body: form });
+    const res = await http.raw("POST", path, { token: session.jwt, body: form, upload: true });
     const result = await http.parse<{ jwt?: string } | null>(res, "POST", path);
     if (result?.jwt) completion = result.jwt;
   }

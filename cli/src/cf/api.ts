@@ -1,22 +1,30 @@
 import type { Account, CloudflareApi, D1Info, InstallSource } from "../contracts";
 import { uploadAssetFiles } from "./assets";
-import { createHttp, isNotFound } from "./http";
+import { createHttp, isNotFound, type Timeouts } from "./http";
+import { makeInstallError } from "../contracts";
 
 const DEFAULT_BASE = "https://api.cloudflare.com/client/v4";
 
 export const createCloudflareApi = (
   token: string,
-  opts: { fetch?: typeof fetch; baseUrl?: string } = {},
+  opts: { fetch?: typeof fetch; baseUrl?: string; timeouts?: Timeouts } = {},
 ): CloudflareApi => {
   const fetchImpl = opts.fetch ?? ((input: URL | RequestInfo, init?: RequestInit) => fetch(input, init));
-  const http = createHttp(token, opts.baseUrl ?? DEFAULT_BASE, fetchImpl);
+  const http = createHttp(token, opts.baseUrl ?? DEFAULT_BASE, fetchImpl, opts.timeouts);
   const acc = (id: string) => `/accounts/${id}`;
   const script = (id: string, name: string) => `/accounts/${id}/workers/scripts/${name}`;
   const isMissingPermission = (e: unknown): boolean => (e as { code?: string })?.code === "missing_permission";
 
   const listAccounts = async (): Promise<Account[]> => {
-    const r = await http.json<{ id: string; name: string }[]>("GET", "/accounts");
-    return r.map(({ id, name }) => ({ id, name }));
+    const all: Account[] = [];
+    for (let n = 1; n <= 50; n++) {
+      const { result, page, totalPages } = await http.page<{ id: string; name: string }[]>(
+        `/accounts?per_page=50&page=${n}`,
+      );
+      all.push(...result.map(({ id, name }) => ({ id, name })));
+      if (result.length === 0 || !totalPages || (page ?? n) >= totalPages) break;
+    }
+    return all;
   };
 
   const listD1 = async (accountId: string): Promise<D1Info[]> => {
@@ -34,9 +42,40 @@ export const createCloudflareApi = (
 
   return {
     verifyToken: async () => {
-      const v = await http.json<{ status?: string }>("GET", "/user/tokens/verify");
-      if (v.status !== "active") return { ok: false, missing: [] };
       const missing: string[] = [];
+      let accounts: Account[] | null = null;
+      let status: string | undefined;
+      try {
+        status = (await http.json<{ status?: string }>("GET", "/user/tokens/verify")).status;
+      } catch (e) {
+        // Only HTTP rejections fall back; network errors and timeouts propagate.
+        if (typeof (e as { status?: unknown }).status !== "number") throw e;
+        const verifyFailed = makeInstallError(
+          "api_error",
+          "Could not verify the API token. Check that it is correct and has not expired.",
+        );
+        try {
+          accounts = await listAccounts();
+        } catch (le) {
+          if (isMissingPermission(le)) {
+            throw makeInstallError(
+              "missing_permission",
+              "The API token could not be verified and cannot list accounts: add Account · Account Settings · Read.",
+            );
+          }
+          throw verifyFailed;
+        }
+        for (const a of accounts) {
+          try {
+            status = (await http.json<{ status?: string }>("GET", `${acc(a.id)}/tokens/verify`)).status;
+            break;
+          } catch (ae) {
+            if (typeof (ae as { status?: unknown }).status !== "number") throw ae;
+          }
+        }
+        if (status === undefined) throw verifyFailed;
+      }
+      if (status !== "active") return { ok: false, missing: [] };
       const probe = async (label: string, fn: () => Promise<unknown>) => {
         try {
           await fn();
@@ -45,14 +84,15 @@ export const createCloudflareApi = (
           missing.push(label);
         }
       };
-      let accounts: Account[] = [];
-      await probe("Account · Account Settings · Read", async () => {
-        accounts = await listAccounts();
-      });
-      const first = accounts[0];
+      if (!accounts) {
+        await probe("Account · Account Settings · Read", async () => {
+          accounts = await listAccounts();
+        });
+      }
+      const first = (accounts as Account[] | null)?.[0];
       if (first) {
         await probe("Account · Workers Scripts · Edit", () => http.json("GET", `${acc(first.id)}/workers/scripts`));
-        await probe("Account · D1 · Edit", () => http.json("GET", `${acc(first.id)}/d1/database?per_page=1`));
+        await probe("Account · D1 · Edit", () => http.json("GET", `${acc(first.id)}/d1/database?per_page=10`));
       }
       return { ok: missing.length === 0, missing };
     },
@@ -74,13 +114,11 @@ export const createCloudflareApi = (
       return r.length;
     },
     scriptExists: async (accountId, name) => {
-      try {
-        await http.json("GET", script(accountId, name));
-        return true;
-      } catch (e) {
-        if (isNotFound(e)) return false;
-        throw e;
-      }
+      const path = script(accountId, name);
+      const res = await http.raw("GET", path, {});
+      if (res.ok) return true;
+      if (res.status === 404) return false;
+      return http.parse<boolean>(res, "GET", path);
     },
     listD1,
     createD1: async (accountId, name) => {
@@ -102,16 +140,18 @@ export const createCloudflareApi = (
         compatibility_date: manifest.compatibilityDate,
         compatibility_flags: manifest.compatibilityFlags,
         assets: { jwt: assetsJwt, config: manifest.assetsConfig },
-        bindings,
+        bindings: bindings.map((b) => (b.type === "d1" ? { type: "d1", name: b.name, database_id: b.id } : b)),
         keep_bindings: ["secret_text"],
         observability: { enabled: manifest.observability },
       };
+      const missingModule = manifest.modules.find((m) => !modules[m.name]);
+      if (missingModule) {
+        throw makeInstallError("api_error", `Release bundle is missing module ${missingModule.name}.`);
+      }
       const form = new FormData();
       form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }), "metadata.json");
       for (const m of manifest.modules) {
-        const bytes = modules[m.name];
-        if (!bytes) continue;
-        form.append(m.name, new Blob([bytes as BlobPart], { type: m.contentType }), m.name);
+        form.append(m.name, new Blob([modules[m.name] as BlobPart], { type: m.contentType }), m.name);
       }
       await http.form("PUT", script(accountId, name), form);
     },
@@ -130,7 +170,7 @@ export const createCloudflareApi = (
     },
     fetchHealth: async (url) => {
       try {
-        const res = await fetchImpl(url);
+        const res = await fetchImpl(url, { signal: AbortSignal.timeout(opts.timeouts?.health ?? 10_000) });
         if (res.status !== 200) return null;
         const body = (await res.json()) as { ok?: boolean; version?: string; installSource?: InstallSource } | null;
         if (!body || typeof body !== "object") return null;

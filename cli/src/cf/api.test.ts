@@ -121,7 +121,7 @@ describe("simple endpoints", () => {
   test("verifyToken reports missing permissions", async () => {
     const { api } = harness((r) => {
       if (r.url.endsWith("/user/tokens/verify")) return env({ status: "active" });
-      if (r.url.endsWith("/accounts")) return env([{ id: "a1", name: "A" }]);
+      if (r.url.includes("/accounts?")) return env([{ id: "a1", name: "A" }]);
       if (r.url.includes("/d1/")) return fail(403, 10000, "no");
       return env([]);
     });
@@ -209,5 +209,135 @@ describe("uploadAssets", () => {
     const { api, calls } = harness(() => env({ jwt: "session", buckets: [] }));
     expect(await api.uploadAssets("a1", "w", assets)).toBe("session");
     expect(calls).toHaveLength(1);
+  });
+});
+
+const hang = (): typeof fetch =>
+  ((_url: unknown, init?: RequestInit) =>
+    new Promise((_res, rej) => {
+      init?.signal?.addEventListener("abort", () => rej(init.signal!.reason));
+    })) as unknown as typeof fetch;
+
+describe("fix round 1", () => {
+  test("scriptExists accepts a non-JSON 200 body, 404 -> false, other errors mapped", async () => {
+    const ok = harness(() => new Response("export default {}", { status: 200 }));
+    expect(await ok.api.scriptExists("a1", "w")).toBe(true);
+    expect(await harness(() => fail(404, 10007, "nf")).api.scriptExists("a1", "w")).toBe(false);
+    expect(await harness(() => new Response("not found", { status: 404 })).api.scriptExists("a1", "w")).toBe(false);
+    const err = await harness(() => fail(500, 1, "boom")).api.scriptExists("a1", "w").catch((e) => e);
+    expect(err.code).toBe("api_error");
+    const perm = await harness(() => fail(403, 10000, "x")).api.scriptExists("a1", "w").catch((e) => e);
+    expect(perm.code).toBe("missing_permission");
+  });
+
+  test("verifyToken falls back to account token verify", async () => {
+    const { api, calls } = harness((r) => {
+      if (r.url.endsWith("/user/tokens/verify")) return fail(401, 1000, "Invalid API Token");
+      if (r.url.includes("/accounts?")) return env([{ id: "a1", name: "A" }, { id: "a2", name: "B" }]);
+      if (r.url.endsWith("/accounts/a1/tokens/verify")) return fail(403, 1000, "nope");
+      if (r.url.endsWith("/accounts/a2/tokens/verify")) return env({ status: "active" });
+      return env([]);
+    });
+    expect(await api.verifyToken()).toEqual({ ok: true, missing: [] });
+    expect(calls.some((c) => c.url.endsWith("/accounts/a2/tokens/verify"))).toBe(true);
+  });
+
+  test("verifyToken fails plainly when neither verify works", async () => {
+    const { api } = harness((r) => {
+      if (r.url.includes("/accounts?")) return env([{ id: "a1", name: "A" }]);
+      return fail(401, 1000, `Invalid ${TOKEN}`);
+    });
+    const err = await api.verifyToken().catch((e) => e);
+    expect(isInstallError(err)).toBe(true);
+    expect(err.message).not.toContain(TOKEN);
+    const noList = harness(() => fail(401, 1000, "bad"));
+    const err2 = await noList.api.verifyToken().catch((e) => e);
+    expect(isInstallError(err2)).toBe(true);
+  });
+
+  test("d1 probe uses per_page=10", async () => {
+    const { api, calls } = harness((r) => {
+      if (r.url.endsWith("/user/tokens/verify")) return env({ status: "active" });
+      if (r.url.includes("/accounts?")) return env([{ id: "a1", name: "A" }]);
+      return env([]);
+    });
+    await api.verifyToken();
+    const d1 = calls.find((c) => c.url.includes("/d1/database"))!;
+    expect(d1.url.endsWith("per_page=10")).toBe(true);
+  });
+
+  test("fetchHealth passes a timeout signal and returns null on hang", async () => {
+    const api = createCloudflareApi(TOKEN, { fetch: hang(), timeouts: { health: 20 } });
+    expect(await api.fetchHealth("https://x")).toBeNull();
+    let signal: AbortSignal | null | undefined;
+    const spy = createCloudflareApi(TOKEN, {
+      fetch: (async (_u: unknown, init?: RequestInit) => {
+        signal = init?.signal;
+        return new Response("{}", { status: 503 });
+      }) as unknown as typeof fetch,
+    });
+    await spy.fetchHealth("https://x");
+    expect(signal).toBeDefined();
+  });
+
+  test("api requests time out as api_error", async () => {
+    const api = createCloudflareApi(TOKEN, { fetch: hang(), timeouts: { request: 20 } });
+    const err = await api.listD1("a1").catch((e) => e);
+    expect(err.code).toBe("api_error");
+    expect(err.message).toBe("Cloudflare API timed out");
+  });
+
+  test("limit_d1 only on database creation, not query", async () => {
+    const { api } = harness(() => fail(400, 1, "maximum number of rows exceeded"));
+    const err = await api.queryD1("a1", "u1", "select 1").catch((e) => e);
+    expect(err.code).toBe("api_error");
+  });
+
+  test("listAccounts paginates via result_info", async () => {
+    const page = (n: number) =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          errors: [],
+          result: n === 1 ? [{ id: "a1", name: "A" }] : [{ id: "a2", name: "B" }],
+          result_info: { page: n, per_page: 50, total_pages: 2 },
+        }),
+      );
+    const { api, calls } = harness((r) => page(r.url.includes("page=2") ? 2 : 1));
+    expect((await api.listAccounts()).map((a) => a.id)).toEqual(["a1", "a2"]);
+    expect(calls[0]!.url).toContain("per_page=50");
+  });
+
+  test("d1 binding is sent with database_id", async () => {
+    const { api, calls } = harness(() => env({}));
+    await api.putScript("a1", "w", {
+      manifest,
+      modules: { "index.js": new Uint8Array([1]), "index.js.map": new Uint8Array([2]) },
+      assetsJwt: "j",
+      bindings: [{ type: "d1", name: "DB", id: "u1" }],
+    });
+    const meta = JSON.parse(await ((calls[0]!.body as FormData).get("metadata") as File).text());
+    expect(meta.bindings).toContainEqual({ type: "d1", name: "DB", database_id: "u1" });
+  });
+
+  test("putScript throws when a manifest module is missing", async () => {
+    const { api, calls } = harness(() => env({}));
+    const err = await api
+      .putScript("a1", "w", { manifest, modules: { "index.js": new Uint8Array([1]) }, assetsJwt: "j", bindings: [] })
+      .catch((e) => e);
+    expect(err.code).toBe("api_error");
+    expect(err.message).toContain("index.js.map");
+    expect(calls).toHaveLength(0);
+  });
+
+  test("403 on asset upload means expired session, not missing permission", async () => {
+    const { api } = harness((r) =>
+      r.url.endsWith("/assets-upload-session")
+        ? env({ jwt: "s", buckets: [["x"]] })
+        : fail(403, 10000, "jwt expired"),
+    );
+    const err = await api.uploadAssets("a1", "w", { "/a.js": new Uint8Array([1]) }).catch((e) => e);
+    expect(err.code).toBe("api_error");
+    expect(err.message).toContain("Asset upload session expired");
   });
 });
