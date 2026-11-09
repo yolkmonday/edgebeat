@@ -33,7 +33,8 @@ overviewApi.get("/", async (c) => {
   const now = Date.now();
   const dayStart = Math.floor(now / DAY_MS) * DAY_MS;
   const db = getDb(c.env);
-  const [monitorRows, [snap], settingRows, [tickCount], [eventCount], recent] = await db.batch([
+  const [[monitorRows, [snap], settingRows, [tickCount], [eventCount], recent], analytics] = await Promise.all([
+    db.batch([
     db.select().from(monitors),
     // never the ~250 KB bars column
     db.select({ lastTickAt: snapshot.lastTickAt, current: snapshot.current }).from(snapshot).where(eq(snapshot.id, 1)),
@@ -41,6 +42,8 @@ overviewApi.get("/", async (c) => {
     db.select({ n: sql<number>`count(*)` }).from(ticks).where(gte(ticks.minute, dayStart / MIN_MS)),
     db.select({ n: sql<number>`count(*)` }).from(events).where(gte(events.at, dayStart)),
     eventsQuery(db, { since: now - RECENT_DAYS * DAY_MS }, RECENT_MAX),
+    ]),
+    fetchUsage(c.env, now),
   ]);
 
   const view = readSnapshot(snap, now);
@@ -55,7 +58,7 @@ overviewApi.get("/", async (c) => {
 
   const limit = stored.plan === "free" ? FREE_LIMIT : null;
   const minutesElapsed = Math.floor((now - dayStart) / MIN_MS);
-  const analytics = await fetchUsage(c.env, now);
+  const configured = Boolean(c.env.CF_ACCOUNT_ID && c.env.CF_API_TOKEN);
   const estimate = estimateWritesToday({
     minutesElapsed,
     ticksToday: tickCount?.n ?? 0,
@@ -75,7 +78,8 @@ overviewApi.get("/", async (c) => {
         budget: effectiveBudget(stored.plan, stored.checkBudget),
         plan: stored.plan,
       },
-      d1WritesToday: analytics
+      analytics: !configured ? "off" : analytics ? "ok" : "failed",
+      d1WritesToday: analytics?.d1Writes != null
         ? {
             value: analytics.d1Writes,
             projected: Math.round((analytics.d1Writes * 1440) / Math.max(minutesElapsed, 15)),
@@ -83,7 +87,7 @@ overviewApi.get("/", async (c) => {
             source: "analytics",
           }
         : { ...estimate, limit, source: "estimate" },
-      requestsToday: analytics ? { value: analytics.requests, limit } : null,
+      requestsToday: analytics?.requests != null ? { value: analytics.requests, limit } : null,
     },
     recentEvents: recent.map(toStateEvent),
   };

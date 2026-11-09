@@ -77,6 +77,8 @@ const toBudgetMonitor = (r: Pick<Row, "id" | "type" | "intervalMin" | "paused">)
 const budgetGuard = async (
   c: AppContext,
   after: (before: BudgetMonitor[]) => BudgetMonitor[],
+  /** a monitor already inserted: left out of `before` so the same `after` can re-check after the write */
+  skipId?: string,
 ): Promise<Response | null> => {
   const [rows, stored] = await Promise.all([
     getDb(c.env)
@@ -84,7 +86,7 @@ const budgetGuard = async (
       .from(monitors),
     readStoredSettings(c.env),
   ]);
-  const before = rows.map(toBudgetMonitor);
+  const before = rows.filter((r) => r.id !== skipId).map(toBudgetMonitor);
   const verdict = budgetVerdict(before, after(before), effectiveBudget(stored.plan, stored.checkBudget));
   if (verdict.ok) return null;
   return c.json({ error: "budget_exceeded", used: verdict.used, after: verdict.after, budget: verdict.budget }, 409);
@@ -141,10 +143,11 @@ monitorsApi.post("/", zValidator("json", monitorInput, onInvalid), async (c) => 
   const db = getDb(c.env);
   const now = Date.now();
   const id = newId();
-  const tooMany = await budgetGuard(c, (before) => [
+  const withNew = (before: BudgetMonitor[]): BudgetMonitor[] => [
     ...before,
     { id, type: input.type, intervalMin: input.intervalMin, paused: input.paused },
-  ]);
+  ];
+  const tooMany = await budgetGuard(c, withNew);
   if (tooMany) return tooMany;
 
   const row: Row = {
@@ -163,9 +166,18 @@ monitorsApi.post("/", zValidator("json", monitorInput, onInvalid), async (c) => 
     if (isUnique(e)) return c.json({ error: "slug_conflict" }, 409);
     throw e;
   }
+  // check-then-insert is not atomic: re-check with the row in place and roll back if concurrent
+  // creates pushed the peak over budget (both racers may lose; none can overshoot)
+  const overBudget = await budgetGuard(c, withNew, id);
+  if (overBudget) {
+    await db.delete(monitors).where(eq(monitors.id, id)); // heartbeats row cascades
+    return overBudget;
+  }
+  // a new monitor has not been checked yet: pending (or paused), never `unknown`
+  const fresh = { lastTickAt: null, stale: false, current: {}, bars: {} };
   const created: Monitor = {
     ...toApiMonitor(row, origin(c)),
-    status: statusOf(row, readSnapshot(undefined, now), undefined, now),
+    status: statusOf(row, fresh, undefined, now),
   };
   return c.json(created, 201);
 });

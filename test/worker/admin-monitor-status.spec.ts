@@ -90,7 +90,7 @@ describe("monitor status", () => {
     const created = await call(cookie, "POST", "/monitors", { name: "A", slug: "a", type: "http", url: "https://example.com", intervalMin: 5 });
     expect(created.status).toBe(201);
     const m = (await created.json()) as Monitor;
-    expect(m.status.state).toBe("unknown"); // no tick yet
+    expect(m.status.state).toBe("pending"); // not checked yet
     const patched = await call(cookie, "PATCH", `/monitors/${m.id}`, { name: "B" });
     expect(patched.status).toBe(200);
     expect(((await patched.json()) as Monitor).status.state).toBe("unknown");
@@ -177,6 +177,24 @@ describe("budget guard", () => {
     expect((await call(cookie, "PATCH", "/monitors/m0", { name: "renamed" })).status).toBe(200);
     // a paused monitor never counts
     expect((await call(cookie, "POST", "/monitors", newMonitor("paused", { paused: true }))).status).toBe(201);
+  });
+
+  it("never overshoots the budget when creates race", async () => {
+    await seedFree(39);
+    const results = await Promise.all(
+      ["r1", "r2", "r3"].map((slug) => call(cookie, "POST", "/monitors", newMonitor(slug))),
+    );
+    const rows = await db.select().from(t.monitors);
+    expect(rows.length).toBeLessThanOrEqual(40);
+    expect(rows.length).toBe(39 + results.filter((r) => r.status === 201).length);
+    expect(results.every((r) => r.status === 201 || r.status === 409)).toBe(true);
+  });
+
+  it("returns pending (or paused) for a new monitor, like the list", async () => {
+    const a = (await (await call(cookie, "POST", "/monitors", newMonitor("fresh"))).json()) as Monitor;
+    expect(a.status.state).toBe("pending");
+    const b = (await (await call(cookie, "POST", "/monitors", newMonitor("fresh2", { paused: true }))).json()) as Monitor;
+    expect(b.status.state).toBe("paused");
   });
 
   it("refuses unpausing a monitor past the budget", async () => {

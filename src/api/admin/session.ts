@@ -1,4 +1,4 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import type { Env } from "@/env";
 import { getDb } from "@/db/client";
 import { groups, monitors, settings } from "@/db/schema";
@@ -11,16 +11,6 @@ export const sessionApi = new Hono<{ Bindings: Env }>();
 
 const INSTALL_SOURCES = ["cli", "cloud", "git"] as const;
 
-type AuthInfo = { kind?: string; scope?: string };
-
-/** requireAdmin may set `auth`; without it the request came in through the cookie. */
-const authOf = (c: Context): Pick<Session, "auth" | "scope"> => {
-  const info = (c as unknown as { get: (k: string) => unknown }).get("auth") as AuthInfo | undefined;
-  return {
-    auth: info?.kind === undefined || info.kind === "cookie" ? "cookie" : "token",
-    scope: info?.scope === "read" ? "read" : "admin",
-  };
-};
 
 sessionApi.get("/", async (c) => {
   const db = getDb(c.env);
@@ -40,7 +30,8 @@ sessionApi.get("/", async (c) => {
     installSource: INSTALL_SOURCES.find((s) => s === c.env.EDGEBEAT_INSTALL_SOURCE) ?? null,
     siteName: stored.siteName,
     plan: stored.plan,
-    ...authOf(c),
+    auth: c.get("auth").kind,
+    scope: c.get("auth").scope,
     analytics: Boolean(c.env.CF_ACCOUNT_ID && c.env.CF_API_TOKEN),
     counts: { monitors: counts?.checks ?? 0, heartbeats: counts?.heartbeats ?? 0, groups: groupCount?.n ?? 0 },
   };

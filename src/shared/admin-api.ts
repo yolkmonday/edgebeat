@@ -62,6 +62,7 @@ export type Overview = {
   counts: Record<AdminState, number>;
   totals: { all: number; checks: number; heartbeats: number };
   usage: {
+    analytics: "ok" | "failed" | "off";                // off = no CF_* credentials, failed = query errored (values fall back to estimate)
     checksPerMinute: { used: number; budget: number; plan: Plan };
     d1WritesToday: { value: number; projected: number; limit: number | null; source: UsageSource };
     requestsToday: { value: number; limit: number | null } | null;   // null = not tracked

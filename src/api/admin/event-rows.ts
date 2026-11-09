@@ -6,8 +6,8 @@ import type { StateEvent } from "@/shared/admin-api";
 type Db = ReturnType<typeof getDb>;
 type Filter = { monitorId?: string; before?: number; since?: number };
 
-// timestamp of the previous event of the same monitor; the gap is the time spent in `from`
-const prevAt = sql<number | null>`(select e2.at from events e2 where e2.monitor_id = ${events.monitorId} and e2.id < ${events.id} order by e2.id desc limit 1)`;
+// timestamp of the previous event of the same monitor (ordered by (at, id) so the (monitor_id, at) index is used); the gap is the time spent in `from`
+const prevAt = sql<number | null>`(select e2.at from events e2 where e2.monitor_id = ${events.monitorId} and e2.at <= ${events.at} and e2.id < ${events.id} order by e2.at desc, e2.id desc limit 1)`;
 
 /** Events newest id first, joined with monitor name/type. Usable alone or inside `db.batch`. */
 export const eventsQuery = (db: Db, f: Filter, limit: number) => {

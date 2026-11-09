@@ -64,7 +64,7 @@ export const events = sqliteTable(
     at: integer("at").notNull(),
     reason: text("reason").notNull(),
   },
-  (t) => [index("events_monitor_at_idx").on(t.monitorId, t.at)],
+  (t) => [index("events_monitor_at_idx").on(t.monitorId, t.at), index("events_at_idx").on(t.at)],
 );
 
 export const heartbeats = sqliteTable("heartbeats", {

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "260c49a6-6c7d-4e46-a9b3-9a4840ef23d6",
+  "id": "6ce4fabf-d009-4d68-83bc-9f5209050bb3",
   "prevId": "64fd5202-82b0-4d82-8060-9da9aeb68894",
   "tables": {
     "api_tokens": {
@@ -194,6 +194,13 @@
           "name": "events_monitor_at_idx",
           "columns": [
             "monitor_id",
+            "at"
+          ],
+          "isUnique": false
+        },
+        "events_at_idx": {
+          "name": "events_at_idx",
+          "columns": [
             "at"
           ],
           "isUnique": false
