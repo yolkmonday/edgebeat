@@ -35,12 +35,16 @@ export default function AppLayout() {
   const from = pathname + search;
   const unauthorized = session.isError && isApiError(session.error) && session.error.status === 401;
 
-  useEffect(() => {
-    setUnauthorizedHandler(() => {
-      qc.clear();
-      navigate(loginPath(from), { replace: true });
-    });
-  }, [qc, navigate, from]);
+  // restore the app-level handler on unmount: a stale one would keep firing on /login
+  useEffect(
+    () =>
+      setUnauthorizedHandler(() => {
+        if (location.pathname.startsWith("/admin/login")) return;
+        qc.clear();
+        navigate(loginPath(from), { replace: true });
+      }),
+    [qc, navigate, from],
+  );
 
   useEffect(() => {
     if (unauthorized) navigate(loginPath(from), { replace: true });

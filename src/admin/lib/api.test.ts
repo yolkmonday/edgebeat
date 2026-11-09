@@ -48,6 +48,23 @@ describe("api client", () => {
     await caught(api.post("/login", { password: "x" }));
     expect(calls).toBe(1);
   });
+  test("401 from /session never calls the unauthorized handler (session guards handle it)", async () => {
+    let calls = 0;
+    setUnauthorizedHandler(() => void calls++);
+    mockFetch(jsonRes(401, { error: "unauthorized" }));
+    await caught(api.get("/session"));
+    expect(calls).toBe(0);
+  });
+  test("setUnauthorizedHandler returns a restore for the previous handler", async () => {
+    const seen: string[] = [];
+    setUnauthorizedHandler(() => void seen.push("default"));
+    const restore = setUnauthorizedHandler(() => void seen.push("layout"));
+    mockFetch(jsonRes(401, { error: "unauthorized" }));
+    await caught(api.get("/monitors"));
+    restore();
+    await caught(api.get("/monitors"));
+    expect(seen).toEqual(["layout", "default"]);
+  });
   test("network failure maps to code network", async () => {
     mockFetch(() => {
       throw new TypeError("fetch failed");

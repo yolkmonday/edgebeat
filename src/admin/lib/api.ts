@@ -18,10 +18,20 @@ export const isApiError = (e: unknown): e is ApiError =>
 
 let onUnauthorized: () => void = () => {};
 
-/** Called on any 401 except the one from `/login`. */
-export const setUnauthorizedHandler = (fn: () => void) => {
+/**
+ * Called on any 401 except from `/login` and `/session` (session guards handle that 401 themselves;
+ * reacting to it here would clear the cache, refetch the session and loop).
+ * Returns a function that restores the previous handler (use it as an effect cleanup).
+ */
+export const setUnauthorizedHandler = (fn: () => void): (() => void) => {
+  const prev = onUnauthorized;
   onUnauthorized = fn;
+  return () => {
+    onUnauthorized = prev;
+  };
 };
+
+const skipsUnauthorizedHandler = (path: string) => path.startsWith("/login") || path.startsWith("/session");
 
 const readBody = async (res: Response): Promise<ApiErrorBody | null> => {
   try {
@@ -46,7 +56,7 @@ const send = async (method: string, path: string, body?: unknown): Promise<Respo
   }
   if (res.ok) return res;
   const err = makeApiError(res.status, await readBody(res));
-  if (res.status === 401 && !path.startsWith("/login")) onUnauthorized();
+  if (res.status === 401 && !skipsUnauthorizedHandler(path)) onUnauthorized();
   throw err;
 };
 
