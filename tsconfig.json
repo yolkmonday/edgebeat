@@ -13,5 +13,5 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "test", "*.ts"],
-  "exclude": ["src/status-page"]
+  "exclude": ["src/status-page", "src/admin"]
 }

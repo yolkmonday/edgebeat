@@ -89,7 +89,7 @@ export const buildBundle = async (repoRoot: string, outDir: string): Promise<Rel
   const config = JSON.parse(stripJsonc(await readFile(join(root, "wrangler.jsonc"), "utf8"))) as WranglerConfig;
   if (!config.compatibility_date) throw new Error("wrangler.jsonc has no compatibility_date");
 
-  await run(bin("vite"), ["build"], root);
+  await run("bun", ["run", "build"], root);
 
   const tmp = await mkdtemp(join(tmpdir(), "edgebeat-bundle-"));
   try {

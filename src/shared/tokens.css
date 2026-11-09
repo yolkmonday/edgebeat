@@ -1,0 +1,135 @@
+/* Edgebeat design tokens (Pego variables). Light on :root, dark on .dark. */
+:root {
+  --bg: #fafafb;
+  --surface: #ffffff;
+  --surface-2: #f4f4f6;
+  --surface-3: #ebebef;
+  --border: #e4e4e9;
+  --border-strong: #cdcdd6;
+  --text: #131317;
+  --text-muted: #5f5f6b;
+
+  --accent: #5b45e8;
+  --accent-hover: #4a35d1;
+  --accent-text: #4f38db;
+  --accent-bg: #f1efff;
+  --accent-border: #d9d3ff;
+  --on-accent: #ffffff;
+
+  --up: #16a34a;
+  --up-text: #15803d;
+  --up-bg: #ecfdf3;
+  --up-border: #bbf0cf;
+
+  --degraded: #f59e0b;
+  --degraded-text: #b45309;
+  --degraded-bg: #fff8eb;
+  --degraded-border: #fce3b0;
+
+  --partial: #ea580c;
+  --partial-text: #c2410c;
+  --partial-bg: #fff4ed;
+  --partial-border: #fdd5bc;
+
+  --down: #dc2626;
+  --down-text: #b91c1c;
+  --down-bg: #fef2f2;
+  --down-border: #fad0d0;
+
+  --maint: #2563eb;
+  --maint-text: #1d4ed8;
+  --maint-bg: #eff5ff;
+  --maint-border: #c9dafc;
+
+  --paused: #5f5f6b;
+  --pending: #8a8a96;
+
+  --unknown: #c2c2cc;
+  --unknown-bg: #f4f4f6;
+  --unknown-border: #e4e4e9;
+
+  --lime: #84cc16;
+
+  --focus-ring: #5b45e840;
+  --overlay: #13131766;
+  --tooltip-bg: #24242b;
+  --tooltip-text: #ededf0;
+  --tooltip-muted: #a1a1ae;
+
+  --shadow: #0000000f;
+  --shadow-2: #0000000a;
+  --dark-ring: transparent;
+}
+
+.dark {
+  --bg: #0b0b0e;
+  --surface: #131317;
+  --surface-2: #1b1b21;
+  --surface-3: #24242b;
+  --border: #26262d;
+  --border-strong: #3a3a44;
+  --text: #ededf0;
+  --text-muted: #a1a1ae;
+
+  --accent: #6550f5;
+  --accent-hover: #7462ff;
+  --accent-text: #a99dff;
+  --accent-bg: #1c1838;
+  --accent-border: #383070;
+  --on-accent: #ffffff;
+
+  --up: #22c55e;
+  --up-text: #4ade80;
+  --up-bg: #0d2117;
+  --up-border: #1a4d30;
+
+  --degraded: #f59e0b;
+  --degraded-text: #fbbf24;
+  --degraded-bg: #261c08;
+  --degraded-border: #5c420f;
+
+  --partial: #f97316;
+  --partial-text: #fb923c;
+  --partial-bg: #2a1608;
+  --partial-border: #63300f;
+
+  --down: #ef4444;
+  --down-text: #f87171;
+  --down-bg: #2a1010;
+  --down-border: #5f1d1d;
+
+  --maint: #3b82f6;
+  --maint-text: #60a5fa;
+  --maint-bg: #0d1a33;
+  --maint-border: #1e3a6e;
+
+  --paused: #8a8a96;
+  --pending: #5f5f6b;
+
+  --unknown: #3a3a44;
+  --unknown-bg: #1b1b21;
+  --unknown-border: #26262d;
+
+  --lime: #a3e635;
+
+  --focus-ring: #5b45e840;
+  --overlay: #13131766;
+  --tooltip-bg: #24242b;
+  --tooltip-text: #ededf0;
+  --tooltip-muted: #a1a1ae;
+
+  /* dark mode uses a hairline ring instead of a drop shadow */
+  --shadow: transparent;
+  --shadow-2: transparent;
+  --dark-ring: #ffffff14;
+}
+
+/* layout constants */
+:root {
+  --sidebar-w: 240px;
+  --topbar-h: 64px;
+  --content-pad: 32px;
+  --content-max: 1136px;
+  --form-col: 772px;
+  --side-col: 340px;
+}
