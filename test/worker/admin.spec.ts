@@ -410,11 +410,11 @@ describe("groups", () => {
 describe("settings", () => {
   it("returns defaults, patches and persists JSON-encoded values", async () => {
     const d = (await (await call(cookie, "GET", "/settings")).json()) as Record<string, unknown>;
-    expect(d).toEqual({ siteName: "Status", plan: "free", checkBudget: null });
+    expect(d).toEqual({ siteName: "Status", plan: "free", checkBudget: null, effectiveBudget: 40, checksPerMinute: 0 });
 
     const res = await call(cookie, "PATCH", "/settings", { plan: "paid", siteName: "  My Site  ", checkBudget: 200 });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ siteName: "My Site", plan: "paid", checkBudget: 200 });
+    expect(await res.json()).toEqual({ siteName: "My Site", plan: "paid", checkBudget: 200, effectiveBudget: 200, checksPerMinute: 0 });
     const rows = await db.select().from(t.settings);
     const map = Object.fromEntries(rows.map((r) => [r.key, JSON.parse(r.value)]));
     expect(map).toEqual({ siteName: "My Site", plan: "paid", checkBudget: 200 });

@@ -56,7 +56,7 @@ export const alignBars = (stored: Bar[], now: number, days = BAR_DAYS): Bar[] =>
   });
 };
 
-const uptime90Of = (bars: Bar[]): number | null => {
+export const uptimeOfBars = (bars: Bar[]): number | null => {
   const seen = bars.filter((b) => b.uptime !== null);
   const observed = seen.reduce((a, b) => a + b.observedS, 0);
   if (observed === 0) return null;
@@ -67,8 +67,8 @@ const uptime90Of = (bars: Bar[]): number | null => {
 const byOrder = <T extends { sort: number; name: string }>(a: T, b: T): number =>
   a.sort - b.sort || a.name.localeCompare(b.name);
 
-const stateOf = (
-  m: PublicStatusInput["monitors"][number],
+export const monitorStateAt = (
+  m: Pick<PublicStatusInput["monitors"][number], "intervalMin" | "paused">,
   entry: CurrentEntry | undefined,
   now: number,
   stale: boolean,
@@ -102,7 +102,7 @@ export const buildPublicStatus = (input: PublicStatusInput): PublicStatus => {
   const states: PublicState[] = [];
   const toPublic = (m: (typeof pub)[number]): PublicMonitor => {
     const entry = input.current[m.id];
-    const state = stateOf(m, entry, now, stale);
+    const state = monitorStateAt(m, entry, now, stale);
     states.push(state);
     const bars = alignBars(input.bars[m.id] ?? [], now);
     return {
@@ -110,7 +110,7 @@ export const buildPublicStatus = (input: PublicStatusInput): PublicStatus => {
       name: m.name,
       state,
       lastCheckedAt: entry?.lastCheckedAt ?? null,
-      uptime90: uptime90Of(bars),
+      uptime90: uptimeOfBars(bars),
       bars,
     };
   };

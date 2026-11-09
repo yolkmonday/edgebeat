@@ -64,7 +64,7 @@ export const events = sqliteTable(
     at: integer("at").notNull(),
     reason: text("reason").notNull(),
   },
-  (t) => [index("events_monitor_at_idx").on(t.monitorId, t.at)],
+  (t) => [index("events_monitor_at_idx").on(t.monitorId, t.at), index("events_at_idx").on(t.at)],
 );
 
 export const heartbeats = sqliteTable("heartbeats", {
@@ -102,4 +102,14 @@ export const snapshot = sqliteTable("snapshot", {
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
+});
+
+export const apiTokens = sqliteTable("api_tokens", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  scope: text("scope").$type<"read" | "admin">().notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  prefix: text("prefix").notNull(),
+  createdAt: integer("created_at").notNull(),
+  lastUsedAt: integer("last_used_at"),
 });
