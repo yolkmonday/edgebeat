@@ -2,8 +2,10 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Env } from "@/env";
+import { effectiveBudget, peakChecksPerMinute } from "@/core/budget";
 import { getDb } from "@/db/client";
-import { settings } from "@/db/schema";
+import { monitors, settings } from "@/db/schema";
+import type { Plan, Settings } from "@/shared/admin-api";
 
 export const settingsApi = new Hono<{ Bindings: Env }>();
 
@@ -13,8 +15,9 @@ const patchSchema = z.object({
   checkBudget: z.number().int().min(1).max(10_000).nullable().optional(),
 });
 
-const readSettings = async (env: Env) => {
-  const rows = await getDb(env).select().from(settings);
+type StoredSettings = { siteName: string; plan: Plan; checkBudget: number | null };
+
+export const parseStored = (rows: { key: string; value: string }[]): StoredSettings => {
   const get = (key: string): unknown => {
     const row = rows.find((r) => r.key === key);
     if (!row) return undefined;
@@ -31,6 +34,25 @@ const readSettings = async (env: Env) => {
     plan: get("plan") === "paid" ? "paid" : "free",
     checkBudget:
       typeof budget === "number" && Number.isInteger(budget) && budget > 0 ? budget : null,
+  };
+};
+
+export const readStoredSettings = async (env: Env): Promise<StoredSettings> =>
+  parseStored(await getDb(env).select().from(settings));
+
+const readSettings = async (env: Env): Promise<Settings> => {
+  const db = getDb(env);
+  const [settingRows, monitorRows] = await db.batch([
+    db.select().from(settings),
+    db
+      .select({ id: monitors.id, type: monitors.type, intervalMin: monitors.intervalMin, paused: monitors.paused })
+      .from(monitors),
+  ]);
+  const stored = parseStored(settingRows);
+  return {
+    ...stored,
+    effectiveBudget: effectiveBudget(stored.plan, stored.checkBudget),
+    checksPerMinute: peakChecksPerMinute(monitorRows.map((m) => ({ ...m, paused: m.paused === 1 }))),
   };
 };
 

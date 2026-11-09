@@ -147,7 +147,7 @@ const decide = (
       inMaintenance: false,
       paused: false,
     });
-    current[r.monitorId] = { state: next.state, lastCheckedAt: now, latencyMs: r.latencyMs };
+    current[r.monitorId] = { state: next.state, lastCheckedAt: now, latencyMs: r.latencyMs, code: r.code, error: r.error };
     if (!changed && row) continue;
     out.stateRows.push({ monitorId: r.monitorId, ...next, lastChangeAt: transition || !row ? now : row.lastChangeAt });
     if (!transition) continue;

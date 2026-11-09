@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Env } from "@/env";
@@ -31,9 +31,23 @@ const onInvalid = (
 const isUnique = (e: unknown): boolean =>
   /UNIQUE constraint/i.test(`${(e as Error)?.message ?? ""} ${String((e as Error)?.cause ?? "")}`);
 
+const countFor = async (env: Env, id: string): Promise<number> => {
+  const [r] = await getDb(env).select({ n: sql<number>`count(*)` }).from(monitors).where(eq(monitors.groupId, id));
+  return r?.n ?? 0;
+};
+
 groupsApi.get("/", async (c) => {
-  const rows = await getDb(c.env).select().from(groups).orderBy(groups.sort, groups.name);
-  return c.json(rows);
+  const db = getDb(c.env);
+  const [rows, counts] = await db.batch([
+    db.select().from(groups).orderBy(groups.sort, groups.name),
+    db
+      .select({ groupId: monitors.groupId, n: sql<number>`count(*)` })
+      .from(monitors)
+      .where(sql`${monitors.groupId} is not null`)
+      .groupBy(monitors.groupId),
+  ]);
+  const byGroup = new Map(counts.map((r) => [r.groupId, r.n]));
+  return c.json(rows.map((g) => ({ ...g, monitorCount: byGroup.get(g.id) ?? 0 })));
 });
 
 groupsApi.post("/", zValidator("json", createSchema, onInvalid), async (c) => {
@@ -44,7 +58,7 @@ groupsApi.post("/", zValidator("json", createSchema, onInvalid), async (c) => {
     if (isUnique(e)) return c.json({ error: "slug_conflict" }, 409);
     throw e;
   }
-  return c.json(row, 201);
+  return c.json({ ...row, monitorCount: 0 }, 201);
 });
 
 groupsApi.patch("/:id", zValidator("json", patchSchema, onInvalid), async (c) => {
@@ -61,7 +75,7 @@ groupsApi.patch("/:id", zValidator("json", patchSchema, onInvalid), async (c) =>
     if (isUnique(e)) return c.json({ error: "slug_conflict" }, 409);
     throw e;
   }
-  return c.json({ ...existing, ...patch });
+  return c.json({ ...existing, ...patch, monitorCount: await countFor(c.env, id) });
 });
 
 groupsApi.delete("/:id", async (c) => {

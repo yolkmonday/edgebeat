@@ -27,4 +27,11 @@ export type SchedMonitor = {
   type: MonitorType;
 };
 
-export type CurrentEntry = { state: MonitorState; lastCheckedAt: number | null; latencyMs: number | null };
+export type CurrentEntry = {
+  state: MonitorState;
+  lastCheckedAt: number | null;
+  latencyMs: number | null;
+  /** absent in snapshots written before the admin UI */
+  code?: number | null;
+  error?: ErrorClass | null;
+};
