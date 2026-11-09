@@ -254,6 +254,21 @@ describe("run", () => {
     expect(text(h)).toContain("✗ A Worker named edgebeat already exists");
   });
 
+  test("install error after secrets were set still prints the generated password once", async () => {
+    const h = makeHarness({
+      env: { CLOUDFLARE_API_TOKEN: "t" },
+      install: async (o) => {
+        o.onEvent?.({ step: "health", status: "fail", error: { code: "health_failed", message: "no answer" } });
+        throw Object.assign(makeInstallError("health_failed", "no answer"), { generatedPassword: "Gen0Pass1234567890abcdef" });
+      },
+    });
+    expect(await run(["setup", "--yes"], h.deps)).toBe(1);
+    const all = text(h);
+    expect(all).toContain("✗ Health check — no answer");
+    expect(all).toContain("Admin password (shown once): Gen0Pass1234567890abcdef");
+    expect(all.split("Gen0Pass1234567890abcdef")).toHaveLength(2);
+  });
+
   test("update with git_managed exits 1 with the exact copy", async () => {
     const h = makeHarness({
       env: { CLOUDFLARE_API_TOKEN: "t" },

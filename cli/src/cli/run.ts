@@ -200,6 +200,14 @@ export const run = async (argv: string[], deps: Deps): Promise<number> => {
     if (!checklist.hasFailure()) {
       io.print(`${c.red("✗")} ${e instanceof Error ? e.message : String(e)}`);
     }
+    // The installer attaches a password it set before failing; a re-run keeps that secret,
+    // so this is the only time it can be shown (R11).
+    const generated = (e as { generatedPassword?: unknown } | null)?.generatedPassword;
+    if (typeof generated === "string" && generated) {
+      io.print("");
+      io.print(`Admin password (shown once): ${generated}`);
+      io.print("Keep it: re-running setup or update keeps this password.");
+    }
     return 1;
   }
 };
