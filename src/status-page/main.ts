@@ -1,7 +1,14 @@
 import "./style.css";
-import type { Overall, PublicMonitor, PublicState, PublicStatus } from "@/core/public-status";
+import {
+  withClientStaleness,
+  type Overall,
+  type PublicMonitor,
+  type PublicState,
+  type PublicStatus,
+} from "@/core/public-status";
 
 const REFRESH_MS = 60_000;
+const FETCH_TIMEOUT_MS = 15_000;
 
 const OVERALL: Record<Overall, { text: string; tone: string }> = {
   operational: { text: "All systems operational", tone: "ok" },
@@ -68,7 +75,7 @@ const renderMonitor = (m: PublicMonitor) => {
   return wrap;
 };
 
-const renderStatus = (data: PublicStatus, refreshFailed: boolean) => {
+const renderStatus = (data: PublicStatus, refreshFailed: boolean, now: number) => {
   const frag = document.createDocumentFragment();
   const header = el("header", "mb-6");
   header.append(el("h1", "text-2xl font-semibold", data.siteName));
@@ -78,7 +85,7 @@ const renderStatus = (data: PublicStatus, refreshFailed: boolean) => {
   frag.append(el("div", `card banner tone-${overall.tone} p-4 mb-4 font-medium`, overall.text));
 
   if (data.stale) {
-    const mins = data.lastTickAt === null ? null : Math.max(1, Math.round((Date.now() - data.lastTickAt) / 60_000));
+    const mins = data.lastTickAt === null ? null : Math.max(1, Math.round((now - data.lastTickAt) / 60_000));
     const text =
       mins === null
         ? "Monitoring delayed — no checks yet"
@@ -115,21 +122,32 @@ if (!root) throw new Error("#app missing");
 root.className = "mx-auto max-w-3xl px-4 py-8";
 
 let last: PublicStatus | null = null;
+let receivedAt = 0; // performance.now() when `last` arrived
 let failed = false;
 let inFlight = false;
 
 const paint = () => {
-  if (last) root.replaceChildren(renderStatus(last, failed));
-  else root.replaceChildren(renderMessage(failed ? "Couldn't load status" : "Loading status…"));
+  if (!last) {
+    root.replaceChildren(renderMessage(failed ? "Couldn't load status" : "Loading status…"));
+    return;
+  }
+  // server time estimate: monotonic clock since the response, immune to local clock skew
+  const now = last.generatedAt + (performance.now() - receivedAt);
+  document.title = last.siteName;
+  root.replaceChildren(renderStatus(withClientStaleness(last, now), failed, now));
 };
 
 const refresh = async () => {
   if (inFlight) return;
   inFlight = true;
   try {
-    const res = await fetch("/api/v1/status", { headers: { accept: "application/json" } });
+    const res = await fetch("/api/v1/status", {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) throw new Error(`status ${res.status}`);
     last = (await res.json()) as PublicStatus;
+    receivedAt = performance.now();
     failed = false;
   } catch {
     failed = true;
@@ -142,6 +160,7 @@ const refresh = async () => {
 paint();
 void refresh();
 setInterval(() => {
+  paint(); // re-age the held status even when a refresh hangs or fails
   if (document.visibilityState === "visible") void refresh();
 }, REFRESH_MS);
 document.addEventListener("visibilitychange", () => {

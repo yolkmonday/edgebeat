@@ -81,15 +81,16 @@ const stateOf = (
   return entry.state === "paused" ? "unknown" : entry.state;
 };
 
+/** R18 order: a grey (unknown) row never sits under a green banner. */
 const overallOf = (stale: boolean, states: PublicState[]): Overall => {
   if (stale) return "unknown";
   const live = states.filter((s) => s !== "paused");
-  if (live.every((s) => s === "pending" || s === "unknown")) return "unknown";
-  const known = live.filter((s) => s !== "pending" && s !== "unknown");
-  const downs = known.filter((s) => s === "down").length;
+  const downs = live.filter((s) => s === "down").length;
   if (downs > 0) return downs === live.length ? "major_outage" : "partial_outage";
-  if (known.includes("degraded")) return "degraded";
-  if (known.includes("maintenance")) return "maintenance";
+  if (live.includes("unknown")) return "unknown";
+  if (live.includes("degraded")) return "degraded";
+  if (live.includes("maintenance")) return "maintenance";
+  if (live.every((s) => s === "pending")) return "unknown";
   return "operational";
 };
 
@@ -125,4 +126,23 @@ export const buildPublicStatus = (input: PublicStatusInput): PublicStatus => {
   const out = [...groups, { slug: "other", name: "Other", monitors: other }].filter((g) => g.monitors.length > 0);
 
   return { siteName: input.siteName, generatedAt: now, lastTickAt, stale, overall: overallOf(stale, states), groups: out };
+};
+
+/**
+ * Client-side ageing of a status the page already holds: `now` is the page's estimate of
+ * server time (generatedAt + time since the response arrived). Once the last tick is older
+ * than TICK_STALE_MS the status is shown stale and unknown, even if refreshes keep failing.
+ */
+export const withClientStaleness = (status: PublicStatus, now: number): PublicStatus => {
+  const { lastTickAt } = status;
+  if (lastTickAt !== null && now - lastTickAt <= TICK_STALE_MS) return status;
+  return {
+    ...status,
+    stale: true,
+    overall: "unknown",
+    groups: status.groups.map((g) => ({
+      ...g,
+      monitors: g.monitors.map((m) => (m.state === "paused" ? m : { ...m, state: "unknown" })),
+    })),
+  };
 };

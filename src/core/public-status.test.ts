@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildPublicStatus } from "./public-status";
+import { buildPublicStatus, withClientStaleness } from "./public-status";
 import type { Bar } from "./stats";
 import type { CurrentEntry } from "./types";
 
@@ -104,12 +104,25 @@ describe("overall", () => {
     expect(build({ monitors: [mon("a", { paused: true })] }).overall).toBe("unknown");
     expect(build({ current: { a: cur("up", NOW - 16 * MIN) } }).overall).toBe("unknown");
   });
-  it("mix of up and unknown follows normal rules", () => {
+  it("a grey row never sits under a green banner: up + unknown is unknown", () => {
     const r = build({
       monitors: [mon("a"), mon("b")],
       current: { a: cur("up"), b: cur("up", NOW - 16 * MIN) },
     });
+    expect(r.overall).toBe("unknown");
+  });
+  it("unknown outranks degraded and maintenance, not down", () => {
+    const stale = cur("up", NOW - 16 * MIN);
+    expect(build(three(cur("degraded"), stale, cur("up"))).overall).toBe("unknown");
+    expect(build(three(cur("maintenance"), stale, cur("up"))).overall).toBe("unknown");
+    expect(build(three(cur("down"), stale, cur("down"))).overall).toBe("partial_outage");
+  });
+  it("up + pending is operational; paused unknown-ish rows do not count", () => {
+    const r = build({ monitors: [mon("a"), mon("b")], current: { a: cur("up") } });
+    expect(states(r)).toEqual(["up", "pending"]);
     expect(r.overall).toBe("operational");
+    const p = build({ monitors: [mon("a"), mon("b", { paused: true })], current: { a: cur("up") } });
+    expect(p.overall).toBe("operational");
   });
   it("down + unknown only counts down among known... partial_outage", () => {
     const r = build({
@@ -194,5 +207,33 @@ describe("bars and uptime90", () => {
   });
   it("missing bars entry still yields 90 null bars", () => {
     expect(build().groups[0]!.monitors[0]!.bars).toHaveLength(90);
+  });
+});
+
+describe("withClientStaleness", () => {
+  const fresh = () =>
+    build({
+      monitors: [mon("a"), mon("b", { paused: true })],
+      current: { a: cur("up"), b: cur("up") },
+    });
+
+  it("returns the status unchanged while the last tick is within 180 s", () => {
+    const r = fresh();
+    expect(withClientStaleness(r, (r.lastTickAt ?? 0) + 180_000)).toBe(r);
+  });
+
+  it("goes stale once the last tick is older than 180 s: overall unknown, live rows unknown, paused kept", () => {
+    const r = fresh();
+    expect(r.overall).toBe("operational");
+    const s = withClientStaleness(r, (r.lastTickAt ?? 0) + 180_001);
+    expect(s.stale).toBe(true);
+    expect(s.overall).toBe("unknown");
+    expect(states(s)).toEqual(["unknown", "paused"]);
+    expect(states(r)).toEqual(["up", "paused"]);
+  });
+
+  it("null lastTickAt is stale", () => {
+    const s = withClientStaleness({ ...fresh(), lastTickAt: null }, NOW);
+    expect(s.overall).toBe("unknown");
   });
 });
