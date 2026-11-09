@@ -1,0 +1,90 @@
+@import "tailwindcss";
+@import "../../shared/tokens.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-text);
+  --color-accent-bg: var(--accent-bg);
+  --color-accent-border: var(--accent-border);
+  --color-on-accent: var(--on-accent);
+
+  --color-up: var(--up);
+  --color-up-text: var(--up-text);
+  --color-up-bg: var(--up-bg);
+  --color-up-border: var(--up-border);
+  --color-degraded: var(--degraded);
+  --color-degraded-text: var(--degraded-text);
+  --color-degraded-bg: var(--degraded-bg);
+  --color-degraded-border: var(--degraded-border);
+  --color-partial: var(--partial);
+  --color-partial-text: var(--partial-text);
+  --color-partial-bg: var(--partial-bg);
+  --color-partial-border: var(--partial-border);
+  --color-down: var(--down);
+  --color-down-text: var(--down-text);
+  --color-down-bg: var(--down-bg);
+  --color-down-border: var(--down-border);
+  --color-maint: var(--maint);
+  --color-maint-text: var(--maint-text);
+  --color-maint-bg: var(--maint-bg);
+  --color-maint-border: var(--maint-border);
+  --color-paused: var(--paused);
+  --color-pending: var(--pending);
+  --color-unknown: var(--unknown);
+  --color-unknown-bg: var(--unknown-bg);
+  --color-unknown-border: var(--unknown-border);
+  --color-lime: var(--lime);
+  --color-tooltip: var(--tooltip-bg);
+  --color-tooltip-text: var(--tooltip-text);
+  --color-tooltip-muted: var(--tooltip-muted);
+  --color-overlay: var(--overlay);
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui;
+  --font-mono: "Geist Mono Variable", ui-monospace;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+}
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* layered so component utilities (e.g. focus-visible:shadow-none on the bare input inside Input) can override it */
+@layer base {
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--focus-ring);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

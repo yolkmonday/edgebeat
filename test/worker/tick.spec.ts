@@ -106,7 +106,9 @@ describe("runTick", () => {
     expect(state).toMatchObject({ state: "down", consecutiveFailures: 2, lastChangeAt: t3 });
 
     const snap = await readSnapshot();
-    expect(JSON.parse(snap.current)).toEqual({ a: { state: "down", lastCheckedAt: t3, latencyMs: 80 } });
+    expect(JSON.parse(snap.current)).toEqual({
+      a: { state: "down", lastCheckedAt: t3, latencyMs: 80, code: 503, error: "status" },
+    });
     expect(snap.lockUntil).toBe(0);
     expect(snap.lastTickAt).toBe(t3);
   });

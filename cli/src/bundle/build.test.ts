@@ -26,7 +26,7 @@ describe("buildBundle", () => {
     expect(manifest.version).toBe(pkg.version);
     expect(manifest.compatibilityDate).toBe(wr.compatibility_date);
     expect(manifest.crons).toEqual(["* * * * *"]);
-    expect(manifest.assetsConfig.run_worker_first).toEqual(["/api/*", "/beat/*"]);
+    expect(manifest.assetsConfig.run_worker_first).toEqual(["/api/*", "/beat/*", "/admin", "/admin/*"]);
     expect(manifest.observability).toBe(true);
     expect(manifest.migrations).toEqual(
       readdirSync(join(repoRoot, "migrations")).filter((n) => n.endsWith(".sql")).sort(),
@@ -39,6 +39,7 @@ describe("buildBundle", () => {
     expect(manifest.modules.map((m) => m.name)).toContain(manifest.mainModule);
     expect(JSON.parse(readFileSync(join(out, "manifest.json"), "utf8"))).toEqual(manifest);
     expect(readFileSync(join(out, "assets", "index.html"), "utf8")).toContain('<div id="app">');
+    expect(readFileSync(join(out, "assets", "admin", "index.html"), "utf8")).toContain('<div id="root">');
     for (const name of manifest.migrations) expect(existsSync(join(out, "migrations", name))).toBe(true);
   });
 

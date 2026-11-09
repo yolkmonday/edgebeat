@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 
-// assets test needs a real build of the status page
+// assets tests need a real build of the status page and the admin SPA
 export default function setup() {
-  execSync("bunx vite build", { stdio: "pipe" });
+  execSync("bun run build", { stdio: "pipe" });
 }

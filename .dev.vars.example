@@ -2,3 +2,6 @@
 ADMIN_PASSWORD=
 # 32 random bytes, base64: openssl rand -base64 32
 ENCRYPTION_KEY=
+# optional: account-wide usage numbers on the admin overview (Account Analytics: Read)
+# CF_ACCOUNT_ID=
+# CF_API_TOKEN=

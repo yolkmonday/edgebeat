@@ -403,7 +403,7 @@ describe("e2e: setup then update against emulated Cloudflare", () => {
     expect(meta.compatibility_flags).toEqual(bundle.manifest.compatibilityFlags);
     expect(meta.keep_bindings).toEqual(["secret_text"]);
     expect(meta.assets.jwt).toBe(COMPLETION_JWT);
-    expect(meta.assets.config.run_worker_first).toEqual(["/api/*", "/beat/*"]);
+    expect(meta.assets.config.run_worker_first).toEqual(["/api/*", "/beat/*", "/admin", "/admin/*"]);
     expect(meta.bindings).toHaveLength(4);
     expect(meta.bindings).toContainEqual({
       type: "plain_text",
