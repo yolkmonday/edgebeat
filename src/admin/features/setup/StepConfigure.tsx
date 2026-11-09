@@ -149,7 +149,7 @@ export const StepConfigure = () => {
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col gap-1">
                 <label htmlFor="wz-keyword-on" className="flex items-center gap-2 text-sm font-medium text-text">
-                  Check text on page <Badge>Optional</Badge>
+                  Check text on page <Badge className="normal-case">Optional</Badge>
                 </label>
                 <p className="text-xs text-muted">Catches error pages that still answer 200, like a blank shop.</p>
               </div>

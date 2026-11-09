@@ -87,6 +87,7 @@ export const GeneralSettingsForm = ({ settings }: { settings: Settings }) => {
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="max-w-[760px]">
       <Card
+        stickyFooter
         footer={
           <>
             <Button variant="ghost" disabled={!isDirty} onClick={() => reset(toFormValues(settings))}>

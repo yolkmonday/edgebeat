@@ -11,7 +11,8 @@ const barColor = (uptime: number | null) => {
   return "bg-down";
 };
 
-const useVisibleCount = () => {
+/** 90 bars from 640 px, 60 from 400 px, 30 below; callers use it so titles match what is drawn. */
+export const useVisibleBarCount = () => {
   const count = () => (window.innerWidth < 400 ? 30 : window.innerWidth < 640 ? 60 : 90);
   const [n, setN] = useState(count);
   useEffect(() => {
@@ -32,7 +33,7 @@ const describe = (bar: Bar) => {
 export type UptimeBarsProps = { bars: Bar[]; className?: string };
 
 export const UptimeBars = ({ bars, className }: UptimeBarsProps) => {
-  const visible = bars.slice(-useVisibleCount());
+  const visible = bars.slice(-useVisibleBarCount());
   return (
     <div role="img" aria-label={`Uptime over the last ${visible.length} days`} className={cn("flex h-8 w-full items-stretch gap-[2px]", className)}>
       {visible.map((bar) => (

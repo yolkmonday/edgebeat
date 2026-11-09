@@ -22,21 +22,22 @@ export type RecentChangesProps = { events: StateEvent[]; now: number };
 
 export const RecentChanges = ({ events, now }: RecentChangesProps) => (
   <Card
+    size="sm"
     className="[&>div]:p-0"
     title="Recent state changes"
     description="Last 7 days"
     actions={
-      <Button asChild variant="ghost" size="sm">
+      <Button asChild variant="ghost" size="sm" className="text-sm">
         <Link to="/events">View all</Link>
       </Button>
     }
   >
     {events.length === 0 ? (
-      <p className="mt-6 border-t border-border px-6 py-8 text-center text-sm text-muted">No state changes in the last 7 days.</p>
+      <p className="mt-4 border-t border-border px-5 py-8 text-center text-sm text-muted">No state changes in the last 7 days.</p>
     ) : (
-      <ul className="mt-6 divide-y divide-border border-t border-border">
+      <ul className="mt-4 divide-y divide-border border-t border-border">
         {events.map((e) => (
-          <li key={e.id} className="flex flex-wrap items-center gap-x-6 gap-y-2 px-6 py-3">
+          <li key={e.id} className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
             <div className="w-52 shrink-0">
               <TransitionPills from={e.from} to={e.to} />
             </div>

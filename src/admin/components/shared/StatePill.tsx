@@ -20,7 +20,7 @@ export type StatePillProps = { state: PillState; label?: string; className?: str
 export const StatePill = ({ state, label, className }: StatePillProps) => {
   const s = STYLES[state];
   return (
-    <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-pill border px-2.5 font-mono text-[11px] font-medium", s.box, className)}>
+    <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-pill border px-2.5 text-xs font-medium", s.box, className)}>
       {state === "paused" ? <Pause size={10} aria-hidden /> : <span className={cn("size-1.5 rounded-pill", s.dot)} aria-hidden />}
       {label ?? s.label}
     </span>

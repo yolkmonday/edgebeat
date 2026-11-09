@@ -13,13 +13,26 @@ type Bucket = ImportSummary["monitors"];
 
 const total = (s: ImportSummary, key: keyof Bucket) => s.groups[key].length + s.monitors[key].length;
 
-const errorLines = (e: unknown): string[] => {
-  if (!isApiError(e)) return ["Couldn't reach the server. Try again."];
-  if (e.code === "too_large") return ["This file is too large to import in one request. Split it into smaller files."];
-  if (e.code === "budget_exceeded") return ["Importing this file would raise checks per minute above your budget."];
-  if (e.issues.length > 0) return e.issues.map((i) => `${i.path.join(".") || "file"}: ${i.message}`);
-  return [(e as ApiError).code];
+/** Prose messages, or `mono` lines for validation paths and raw codes. */
+const errorLines = (e: unknown): { lines: string[]; mono: boolean } => {
+  if (!isApiError(e)) return { lines: ["Couldn't reach the server. Try again."], mono: false };
+  if (e.code === "too_large") return { lines: ["This file is too large to import in one request. Split it into smaller files."], mono: false };
+  if (e.code === "budget_exceeded") {
+    const after = typeof e.body?.after === "number" ? ` to ${e.body.after}` : "";
+    const budget = typeof e.body?.budget === "number" ? ` (budget ${e.body.budget})` : "";
+    return { lines: [`Importing this file would raise checks per minute${after}${budget}. Raise intervals in the file or switch to the Paid plan.`], mono: false };
+  }
+  if (e.issues.length > 0) return { lines: e.issues.map((i) => `${i.path.join(".") || "file"}: ${i.message}`), mono: true };
+  return { lines: [(e as ApiError).code], mono: true };
 };
+
+const ErrorList = ({ lines, mono }: { lines: string[]; mono: boolean }) => (
+  <ul className={cn("flex flex-col gap-1", mono && "font-mono")}>
+    {lines.map((line) => (
+      <li key={line}>{line}</li>
+    ))}
+  </ul>
+);
 
 const SlugList = ({ label, slugs, tone }: { label: string; slugs: string[]; tone?: "bad" }) =>
   slugs.length === 0 ? null : (
@@ -104,13 +117,7 @@ export const ImportDialog = ({ open, file, fileName, onClose }: ImportDialogProp
         {preview.isError || run.isError ? (
           <div role="alert" className="flex items-start gap-2 rounded-md border border-down-border bg-down-bg p-3 text-xs text-down-text">
             <CircleAlert size={14} className="mt-0.5 shrink-0" aria-hidden />
-            <ul className="flex flex-col gap-1">
-              {errorLines(run.error ?? preview.error).map((line) => (
-                <li key={line} className="font-mono">
-                  {line}
-                </li>
-              ))}
-            </ul>
+            <ErrorList {...errorLines(run.error ?? preview.error)} />
           </div>
         ) : null}
         <label className={cn("flex items-start gap-2 text-sm", prune ? "text-down-text" : "text-text")}>

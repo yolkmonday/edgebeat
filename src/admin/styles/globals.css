@@ -72,9 +72,12 @@ body {
   font-size: 14px;
 }
 
-:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--focus-ring);
+/* layered so component utilities (e.g. focus-visible:shadow-none on the bare input inside Input) can override it */
+@layer base {
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--focus-ring);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

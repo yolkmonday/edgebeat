@@ -20,14 +20,15 @@ export const TopBar = ({ session }: { session: Session }) => {
         <span className="hidden truncate font-mono text-xs text-muted sm:inline">{location.host}</span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <Button asChild variant="secondary" size="sm">
-          <a href="/" target="_blank" rel="noopener">
+        {/* icon-only below 640 px so the site name keeps its room */}
+        <Button asChild variant="secondary" size="sm" className="text-sm">
+          <a href="/" target="_blank" rel="noopener" aria-label="View status page">
             <ExternalLink size={14} aria-hidden />
-            View status page
+            <span className="hidden sm:inline">View status page</span>
           </a>
         </Button>
-        <Button variant="ghost" size="sm" icon={LogOut} loading={logout.isPending} onClick={onLogout}>
-          Log out
+        <Button variant="ghost" size="sm" className="text-sm" icon={LogOut} loading={logout.isPending} onClick={onLogout} aria-label="Log out">
+          <span className="hidden sm:inline">Log out</span>
         </Button>
       </div>
     </header>

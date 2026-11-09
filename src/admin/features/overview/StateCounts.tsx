@@ -21,9 +21,10 @@ export type StateCountsProps = { counts: Overview["counts"]; totals: Overview["t
 
 export const StateCounts = ({ counts, totals }: StateCountsProps) => (
   <Card
+    size="sm"
     title="Monitors by state"
     actions={
-      <span className="font-mono text-xs text-muted">
+      <span className="text-xs text-muted">
         {totals.all} total · {totals.checks} checks, {totals.heartbeats} heartbeats
       </span>
     }

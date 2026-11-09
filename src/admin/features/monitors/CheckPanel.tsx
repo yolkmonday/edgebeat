@@ -4,7 +4,7 @@ import type { MonitorDetail } from "@shared/admin-api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { KeyValueList } from "@/components/shared/KeyValueList";
-import { UptimeBars } from "@/components/shared/UptimeBars";
+import { UptimeBars, useVisibleBarCount } from "@/components/shared/UptimeBars";
 import { useTestCheck } from "@/api/use-monitors";
 import { isApiError } from "@/lib/api";
 import { ago, errorLabel, ms, pct } from "@/lib/format";
@@ -15,6 +15,8 @@ import { uptimeFromBars } from "@/features/monitors/bars";
 export const CheckPanel = ({ monitor: m, now }: { monitor: MonitorDetail; now: number }) => {
   const check = useTestCheck(m.id);
   const s = m.status;
+  // narrow screens draw fewer bars: title and percentage follow the bars shown
+  const shown = m.bars.slice(-useVisibleBarCount());
   const run = () =>
     check.mutate(undefined, {
       onSuccess: (r) => reportCheck(m.name, r),
@@ -43,8 +45,8 @@ export const CheckPanel = ({ monitor: m, now }: { monitor: MonitorDetail; now: n
           />
         )}
       </Card>
-      <Card title="Last 90 days" actions={<span className="font-mono text-sm text-text">{pct(uptimeFromBars(m.bars))}</span>}>
-        <UptimeBars bars={m.bars} />
+      <Card title={`Last ${shown.length} days`} actions={<span className="font-mono text-sm text-text">{pct(uptimeFromBars(shown))}</span>}>
+        <UptimeBars bars={shown} />
       </Card>
       <RecentEvents events={m.events} now={now} />
     </div>

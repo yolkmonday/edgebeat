@@ -30,7 +30,7 @@ export const TickCard = ({ status }: { status: TickStatus }) => {
     <section
       aria-live="polite"
       className={cn(
-        "flex flex-wrap items-center justify-between gap-6 rounded-lg border p-6",
+        "flex flex-wrap items-center justify-between gap-6 rounded-lg border px-6 py-5",
         stale ? "border-border-strong bg-surface-2" : "border-border bg-surface shadow-[0_1px_2px_var(--shadow)] dark:shadow-[0_0_0_1px_var(--dark-ring)]",
       )}
     >
@@ -49,7 +49,7 @@ export const TickCard = ({ status }: { status: TickStatus }) => {
         </div>
       </div>
       {waiting ? null : (
-        <div className="flex max-w-xl flex-1 gap-3 border-l border-border pl-6 text-xs text-muted">
+        <div className="flex max-w-xl flex-1 basis-full gap-3 border-t border-border pt-4 text-xs text-muted md:basis-0 md:border-t-0 md:border-l md:pt-0 md:pl-6">
           {stale ? (
             <div className="flex flex-col items-start gap-3">
               <p>Your public page now shows Status unknown for every monitor. Check that the Worker&apos;s cron trigger is on in Cloudflare.</p>

@@ -132,7 +132,7 @@ export const MonitorList = ({ kind }: MonitorListProps) => {
           </div>
         )}
         <div className="flex items-center justify-between gap-4 border-t border-border px-4 py-3">
-          <p className="font-mono text-xs text-muted">
+          <p className="text-xs text-muted">
             Showing {paged.items.length} of {paged.total}
           </p>
           <div className="flex gap-2">
