@@ -224,8 +224,9 @@ shrinks; the design does not get more complex to hit it.** [call] The
 - `settings`, `admin_sessions`.
 
 Projected writes (40 monitors, 5 heartbeats @ 1 min, free plan):
-ticks 1,440 + snapshot 1,440 + daily_stats 40×96 = 3,840 + heartbeats 7,200
-+ state changes ~small ≈ **14k/day**, ~14% of the free quota. Admin shows a
+ticks 1,440 + snapshot 1,440 + tick-lock update 1,440 + daily_stats 40×96 =
+3,840 + heartbeats 7,200 + hourly prune of old ticks ~1,440 + rollup/state
+changes ~small ≈ **17–18k/day**, ~18% of the free quota. Admin shows a
 live **budget meter** (writes, reads, subrequests) with projections.
 
 ### 6.2 Reads
@@ -398,6 +399,20 @@ Exact endpoint list is decided during rollout, not in this design.
   the row; the 90-day bars update only today's entry. (§5, §6.1)
 - **Heartbeat coalescing** returns `200 { coalesced: true }` (not 429) so
   `curl -f` in user jobs never fails; still no D1 write. (§6.5)
+- **Subrequest accounting** (final review, R17): the tick caps outbound
+  subrequests per invocation (free 44 = 40 checks + 4 retries, paid 1,000),
+  counting the initial fetch, retries, every redirect hop and each TCP
+  connect. HTTP redirects are followed manually (max 5 hops, each hop
+  re-checked by the SSRF guard). A check that cannot get a subrequest is not
+  run and is carried, never evaluated. `followRedirects` defaults to off
+  unless a keyword is set. A free-plan `checkBudget` override is clamped to
+  40. (§2, §5)
+- **Overall status order** (final review, R18): stale → unknown; any down →
+  partial/major outage; any non-paused public monitor unknown → unknown; any
+  degraded → degraded; any maintenance → maintenance; all pending (or none) →
+  unknown; else operational. A grey row never sits under a green banner. The
+  status page also ages the status it holds and shows it stale/unknown once
+  the last tick is over 180 s old, even when refreshes fail. (§8)
 
 ## 15. Left to the builder
 

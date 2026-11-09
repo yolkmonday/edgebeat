@@ -8,6 +8,8 @@ Plan 1 (core engine) only. Working: HTTP, TCP and heartbeat monitors, state tran
 
 The number of monitors the free Workers plan can handle per tick is a target, not a measurement. It is pending a real benchmark on a free account.
 
+On the free plan a Worker invocation may make 50 subrequests, and every redirect hop counts as one. Each tick therefore caps itself at 44 subrequests (40 checks + 4 retries; 6 stay reserved for alerts): initial fetches, retries, redirect hops and TCP connects all count. A check that cannot get a subrequest is not run this minute; it is carried to the next tick, never marked down. The paid plan caps at 1,000. A `checkBudget` override can lower the free-plan budget of 40 but not raise it.
+
 ## Deploy (manual)
 
 Requires a Cloudflare account and [Bun](https://bun.sh).
@@ -21,7 +23,7 @@ bunx wrangler d1 create edgebeat
 Put the printed `database_id` into `wrangler.jsonc` (`d1_databases[0].database_id`), then set the secrets and deploy:
 
 ```sh
-bunx wrangler secret put ADMIN_PASSWORD
+bunx wrangler secret put ADMIN_PASSWORD   # at least 12 characters; login is refused otherwise
 bunx wrangler secret put ENCRYPTION_KEY   # base64 of 32 random bytes: openssl rand -base64 32
 bun run deploy                            # builds the page, applies migrations (remote), deploys
 ```
@@ -53,7 +55,7 @@ curl -c jar -H "Origin: $HOST" -H 'content-type: application/json' \
   -d '{"password":"<ADMIN_PASSWORD>"}' $HOST/api/admin/login
 ```
 
-Create monitors (`intervalMin` is one of 1, 2, 3, 5, 10, 15, 30, 60):
+Create monitors (`intervalMin` is one of 1, 2, 3, 5, 10, 15, 30, 60). HTTP monitors do not follow redirects unless `followRedirects` is `true`; it defaults to `true` only when a `keyword` is set. Followed redirects are capped at 5 hops, and each hop counts as a subrequest.
 
 ```sh
 # http
@@ -87,7 +89,7 @@ curl -fsS https://<host>/beat/<token>          # success
 curl -fsS https://<host>/beat/<token>/fail     # report failure
 ```
 
-The monitor goes down when no beat arrives within `heartbeatPeriodS + heartbeatGraceS`.
+The monitor goes down when no beat arrives within `heartbeatPeriodS + heartbeatGraceS`. A new heartbeat monitor stays Pending until its first beat. On a heartbeat, `intervalMin` sets how often lateness is checked, not how often your job must beat. Unpausing a heartbeat clears its last beat, so it is Pending again until the next one.
 
 ## License
 
