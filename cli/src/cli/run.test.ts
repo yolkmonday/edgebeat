@@ -16,6 +16,7 @@ const RESULT: InstallResult = {
   adminUrl: "https://edgebeat.me.workers.dev/admin",
   version: "0.1.0",
   generatedPassword: null,
+  warnings: [],
 };
 
 type Harness = {

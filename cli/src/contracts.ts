@@ -40,7 +40,6 @@ export type CloudflareApi = {
   getSubdomain(accountId: string): Promise<string | null>;
   createSubdomain(accountId: string, subdomain: string): Promise<void>;
   countWorkers(accountId: string): Promise<number>;
-  scriptExists(accountId: string, name: string): Promise<boolean>;
   getScriptInfo(accountId: string, name: string): Promise<ScriptInfo | null>; // null = no script with that name
   listD1(accountId: string): Promise<D1Info[]>;
   createD1(accountId: string, name: string): Promise<D1Info>;
@@ -105,12 +104,15 @@ export type InstallOptions = {
   onEvent?: (e: InstallEvent) => void;
   pollIntervalMs?: number; // health poll, default 3000
   pollTimeoutMs?: number; // health poll, default 90000
+  // Called once, right after a generated ADMIN_PASSWORD was stored, so it can be shown before anything else can fail.
+  onGeneratedPassword?: (password: string) => void;
 };
 export type InstallResult = {
   statusUrl: string;
   adminUrl: string; // https://<name>.<sub>.workers.dev/ and …/admin
   version: string;
   generatedPassword: string | null; // non-null only if generated this run
+  warnings: string[]; // e.g. workers.dev not reachable from this network; the install itself succeeded
 };
 
 const INSTALL_ERROR_CODES: readonly string[] = [

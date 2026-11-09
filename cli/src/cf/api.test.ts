@@ -95,11 +95,6 @@ describe("simple endpoints", () => {
     expect(await harness(() => env({ subdomain: "me" })).api.getSubdomain("a1")).toBe("me");
   });
 
-  test("scriptExists 404 -> false", async () => {
-    expect(await harness(() => fail(404, 10007, "nf")).api.scriptExists("a1", "w")).toBe(false);
-    expect(await harness(() => env({})).api.scriptExists("a1", "w")).toBe(true);
-  });
-
   test("queryD1 flattens results and sends sql/params", async () => {
     const { api, calls } = harness(() => env([{ results: [{ a: 1 }] }, { results: [{ b: 2 }] }]));
     expect(await api.queryD1("a1", "u1", "select ?", [1])).toEqual([{ a: 1 }, { b: 2 }]);
@@ -219,17 +214,6 @@ const hang = (): typeof fetch =>
     })) as unknown as typeof fetch;
 
 describe("fix round 1", () => {
-  test("scriptExists accepts a non-JSON 200 body, 404 -> false, other errors mapped", async () => {
-    const ok = harness(() => new Response("export default {}", { status: 200 }));
-    expect(await ok.api.scriptExists("a1", "w")).toBe(true);
-    expect(await harness(() => fail(404, 10007, "nf")).api.scriptExists("a1", "w")).toBe(false);
-    expect(await harness(() => new Response("not found", { status: 404 })).api.scriptExists("a1", "w")).toBe(false);
-    const err = await harness(() => fail(500, 1, "boom")).api.scriptExists("a1", "w").catch((e) => e);
-    expect(err.code).toBe("api_error");
-    const perm = await harness(() => fail(403, 10000, "x")).api.scriptExists("a1", "w").catch((e) => e);
-    expect(perm.code).toBe("missing_permission");
-  });
-
   test("verifyToken falls back to account token verify", async () => {
     const { api, calls } = harness((r) => {
       if (r.url.endsWith("/user/tokens/verify")) return fail(401, 1000, "Invalid API Token");

@@ -13,13 +13,17 @@ import {
   type ReleaseBundle,
   type InstallSource,
   type ScriptBinding,
+  type ScriptInfo,
+  INSTALL_SOURCE_BINDING,
+  VERSION_BINDING,
 } from "../contracts";
 import { CREATE_MIGRATIONS_TABLE, SELECT_APPLIED, migrationBatch, pendingMigrations } from "./migrations";
 import { generateEncryptionKey, generatePassword, isValidSlug, validateAdminPassword, validateName } from "./secrets";
+import { compareVersions } from "./semver";
 
 export type UpdateOptions = Omit<InstallOptions, "adminPassword" | "subdomain">;
 
-const D1_LIMIT = 10;
+// Free-plan Worker count; only a warning (R14): paid plans allow more, and the upload itself reports a real limit.
 const WORKER_LIMIT = 100;
 const DEFAULT_POLL_INTERVAL_MS = 3000;
 const DEFAULT_POLL_TIMEOUT_MS = 90_000;
@@ -52,18 +56,19 @@ const runStep = async <T>(emit: Emit, step: InstallStep, fn: () => Promise<Outco
 const origin = (name: string, subdomain: string): string => `https://${name}.${subdomain}.workers.dev`;
 const healthUrl = (name: string, subdomain: string): string => `${origin(name, subdomain)}/api/v1/health`;
 
+// Smoke check only (R13): never used to decide whether Edgebeat is installed.
 const readHealth = async (api: CloudflareApi, url: string) => {
   try {
     return await api.fetchHealth(url);
   } catch {
-    return null; // unreachable counts as "no Edgebeat here"
+    return null; // unreachable, e.g. an ISP that blocks *.workers.dev
   }
 };
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-const checkToken = async (api: CloudflareApi): Promise<void> => {
-  const v = await api.verifyToken();
+const checkToken = async (api: CloudflareApi, accountId: string): Promise<void> => {
+  const v = await api.verifyToken(accountId);
   if (v.missing.length > 0) {
     throw makeInstallError(
       "missing_permission",
@@ -79,16 +84,26 @@ const nameTaken = (name: string): Error =>
     `A Worker named "${name}" already exists in this account and is not an Edgebeat install. Choose another name.`,
   );
 
+// Refuse to replace newer installed code with this bundle (R18). Unknown or non-semver versions pass.
+const guardCodeDowngrade = (installed: string | undefined, bundle: ReleaseBundle): void => {
+  const { version } = bundle.manifest;
+  if (!installed || (compareVersions(installed, version) ?? 0) <= 0) return;
+  throw makeInstallError(
+    "api_error",
+    `This Edgebeat (v${installed}) is newer than this installer (v${version}). Run bunx edgebeat@latest update.`,
+  );
+};
+
 // The script exists: refuse unless it is our own install that stopped before its secrets were set.
+// Identity comes from the script's bindings through the Cloudflare API, never from workers.dev (R13).
 const checkExistingScript = async (
   api: CloudflareApi,
   opts: InstallOptions,
-  subdomain: string | null,
+  info: ScriptInfo,
+  bundle: ReleaseBundle,
 ): Promise<void> => {
-  if (!subdomain) throw nameTaken(opts.name);
-  const health = await readHealth(api, healthUrl(opts.name, subdomain));
-  if (!health?.version) throw nameTaken(opts.name);
-  if (health.installSource === "git") {
+  if (!info.installSource) throw nameTaken(opts.name);
+  if (info.installSource === "git") {
     throw makeInstallError(
       "already_installed",
       `Edgebeat is already installed as "${opts.name}". ${GIT_MANAGED_MESSAGE}`,
@@ -96,11 +111,10 @@ const checkExistingScript = async (
   }
   const secrets = await api.listSecretNames(opts.accountId, opts.name);
   if (secrets.includes("ENCRYPTION_KEY") && secrets.includes("ADMIN_PASSWORD")) {
-    throw makeInstallError(
-      "already_installed",
-      `Edgebeat ${health.version} is already installed as "${opts.name}". Use update to upgrade it.`,
-    );
+    const version = info.version ? `Edgebeat ${info.version}` : "Edgebeat";
+    throw makeInstallError("already_installed", `${version} is already installed as "${opts.name}". Use update to upgrade it.`);
   }
+  guardCodeDowngrade(info.version, bundle);
 };
 
 const SELECT_TABLES = "SELECT name FROM sqlite_master WHERE type = 'table';";
@@ -198,7 +212,8 @@ const scriptStep = async (
   const bindings: ScriptBinding[] = [
     { type: "d1", name: "DB", id: uuid },
     { type: "assets", name: "ASSETS" },
-    { type: "plain_text", name: "EDGEBEAT_INSTALL_SOURCE", text: source },
+    { type: "plain_text", name: INSTALL_SOURCE_BINDING, text: source },
+    { type: "plain_text", name: VERSION_BINDING, text: bundle.manifest.version },
   ];
   await api.putScript(opts.accountId, opts.name, {
     manifest: bundle.manifest,
@@ -211,23 +226,36 @@ const scriptStep = async (
   return { value: undefined, detail: bundle.manifest.version };
 };
 
+// Polls health until the new version answers. A timeout is a warning, not a failure: everything is
+// deployed by now, and workers.dev may just be blocked on this network (R13). Value = the warning.
 const healthStep = async (
   api: CloudflareApi,
-  url: string,
+  name: string,
+  subdomain: string,
   version: string,
   opts: UpdateOptions,
-): Promise<Outcome<void>> => {
+  done: "Installed" | "Updated",
+): Promise<Outcome<string | null>> => {
   const interval = opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const timeout = opts.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
   const deadline = Date.now() + timeout;
+  const statusUrl = `${origin(name, subdomain)}/`;
   for (;;) {
-    const health = await readHealth(api, url);
-    if (health?.version === version) return { value: undefined, detail: version };
+    const health = await readHealth(api, healthUrl(name, subdomain));
+    if (health?.version === version) return { value: null, detail: version };
     if (Date.now() + interval > deadline) {
-      throw makeInstallError(
-        "health_failed",
-        `Edgebeat did not answer with version ${version} at ${url} within ${Math.round(timeout / 1000)} s.`,
-      );
+      if (health?.version) {
+        return {
+          value: `${done}, but ${statusUrl} still answers with version ${health.version} instead of ${version}. It can take a minute to switch: reload it later.`,
+          status: "skip",
+          detail: `still ${health.version}`,
+        };
+      }
+      return {
+        value: `${done}, but workers.dev isn't reachable from this network — open ${statusUrl} in a browser or try another network.`,
+        status: "skip",
+        detail: "workers.dev not reachable from here",
+      };
     }
     await sleep(interval);
   }
@@ -242,6 +270,8 @@ const deployTail = async (
   subdomain: string,
   emit: Emit,
   source: InstallSource,
+  warnings: string[],
+  done: "Installed" | "Updated",
   secrets: () => Promise<string | null>,
 ): Promise<InstallResult> => {
   const { accountId, name } = opts;
@@ -258,7 +288,8 @@ const deployTail = async (
       await api.enableWorkersDev(accountId, name);
       return { value: undefined, detail: `${origin(name, subdomain)}/` };
     });
-    await runStep(emit, "health", () => healthStep(api, healthUrl(name, subdomain), version, opts));
+    const warning = await runStep(emit, "health", () => healthStep(api, name, subdomain, version, opts, done));
+    if (warning) warnings.push(warning);
   } catch (e) {
     // A re-run keeps the existing secret, so this is the only chance to show the password.
     if (generatedPassword !== null && e instanceof Error) Object.assign(e, { generatedPassword });
@@ -269,6 +300,7 @@ const deployTail = async (
     adminUrl: `${origin(name, subdomain)}/admin`,
     version,
     generatedPassword,
+    warnings,
   };
 };
 
@@ -279,39 +311,31 @@ export const install = async (
 ): Promise<InstallResult> => {
   const emit: Emit = opts.onEvent ?? (() => {});
   const { accountId, name } = opts;
+  const warnings: string[] = [];
 
   await runStep(emit, "verify", async () => {
     validateName(name);
     if (opts.adminPassword !== undefined) validateAdminPassword(opts.adminPassword);
-    await checkToken(api);
+    await checkToken(api, accountId);
     return { value: undefined };
   });
 
-  await runStep(emit, "limits", async () => {
-    const [d1s, exists, subdomain] = await Promise.all([
-      api.listD1(accountId),
-      api.scriptExists(accountId, name),
-      api.getSubdomain(accountId),
-    ]);
-    if (!d1s.some((d) => d.name === name) && d1s.length >= D1_LIMIT) {
-      throw makeInstallError(
-        "limit_d1",
-        `This account already has ${d1s.length} D1 databases, the free plan limit is ${D1_LIMIT}. Delete one or upgrade the plan.`,
-      );
-    }
-    if (!exists) {
+  // No D1-count refusal (R14): createD1 maps a real limit to limit_d1, before anything else is written.
+  await runStep(emit, "limits", async (): Promise<Outcome<void>> => {
+    const [d1s, info] = await Promise.all([api.listD1(accountId), api.getScriptInfo(accountId, name)]);
+    let warning: string | undefined;
+    if (info) {
+      await checkExistingScript(api, opts, info, bundle);
+    } else {
       const workers = await api.countWorkers(accountId);
       if (workers >= WORKER_LIMIT) {
-        throw makeInstallError(
-          "limit_workers",
-          `This account already has ${workers} Workers, the free plan limit is ${WORKER_LIMIT}. Delete one or upgrade the plan.`,
-        );
+        warning = `This account already has ${workers} Workers, the free plan limit is ${WORKER_LIMIT}. The upload may be refused.`;
+        warnings.push(warning);
       }
     }
-    if (exists) await checkExistingScript(api, opts, subdomain);
     const db = d1s.find((d) => d.name === name);
     if (db) await checkExistingDatabase(api, accountId, db.uuid, name, bundle);
-    return { value: undefined };
+    return warning === undefined ? { value: undefined } : { value: undefined, detail: warning };
   });
 
   const subdomain = await runStep(emit, "subdomain", async (): Promise<Outcome<string>> => {
@@ -335,7 +359,7 @@ export const install = async (
 
   const uuid = await runStep(emit, "database", () => databaseStep(api, accountId, name, null));
 
-  return deployTail(api, bundle, opts, uuid, subdomain, emit, opts.source, () =>
+  return deployTail(api, bundle, opts, uuid, subdomain, emit, opts.source, warnings, "Installed", () =>
     runStep(emit, "secrets", async (): Promise<Outcome<string | null>> => {
       const present = await api.listSecretNames(accountId, name);
       const set: string[] = [];
@@ -349,6 +373,8 @@ export const install = async (
       if (!present.includes("ADMIN_PASSWORD")) {
         await api.putSecret(accountId, name, "ADMIN_PASSWORD", opts.adminPassword ?? generated ?? "");
         set.push("ADMIN_PASSWORD");
+        // Hand the password over now: a re-run keeps this secret, so a later failure must not lose it (R15).
+        if (generated !== null) opts.onGeneratedPassword?.(generated);
       } else if (opts.adminPassword !== undefined) {
         notes.push("admin password already set — kept");
       }
@@ -372,23 +398,25 @@ export const update = async (
     "verify",
     async (): Promise<Outcome<{ subdomain: string; source: InstallSource }>> => {
       validateName(name);
-      await checkToken(api);
+      await checkToken(api, accountId);
       const notInstalled = makeInstallError(
         "not_installed",
         `No Edgebeat install named "${name}" was found in this account.`,
       );
-      const [exists, current] = await Promise.all([api.scriptExists(accountId, name), api.getSubdomain(accountId)]);
-      if (!exists || !current) throw notInstalled;
-      const health = await readHealth(api, healthUrl(name, current));
-      if (!health?.version) throw notInstalled;
-      if (health.installSource === "git") throw makeInstallError("git_managed", GIT_MANAGED_MESSAGE);
+      // Identity from the Cloudflare API, not workers.dev (R13).
+      const [info, current] = await Promise.all([api.getScriptInfo(accountId, name), api.getSubdomain(accountId)]);
+      if (!info?.installSource || !current) throw notInstalled;
+      if (info.installSource === "git") throw makeInstallError("git_managed", GIT_MANAGED_MESSAGE);
+      guardCodeDowngrade(info.version, bundle);
       // Keep the recorded source (R10): a CLI update of a cloud install stays "cloud".
-      const source = health.installSource ?? opts.source;
-      return { value: { subdomain: current, source }, detail: `installed ${health.version}` };
+      return {
+        value: { subdomain: current, source: info.installSource },
+        detail: `installed ${info.version ?? "version unknown"}`,
+      };
     },
   );
 
   const uuid = await runStep(emit, "database", () => databaseStep(api, accountId, name, bundle));
 
-  return deployTail(api, bundle, opts, uuid, found.subdomain, emit, found.source, async () => null);
+  return deployTail(api, bundle, opts, uuid, found.subdomain, emit, found.source, [], "Updated", async () => null);
 };

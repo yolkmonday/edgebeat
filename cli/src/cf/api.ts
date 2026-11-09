@@ -124,13 +124,6 @@ export const createCloudflareApi = (
       const r = await http.json<unknown[]>("GET", `${acc(accountId)}/workers/scripts`);
       return r.length;
     },
-    scriptExists: async (accountId, name) => {
-      const path = script(accountId, name);
-      const res = await http.raw("GET", path, {});
-      if (res.ok) return true;
-      if (res.status === 404) return false;
-      return http.parse<boolean>(res, "GET", path);
-    },
     getScriptInfo: async (accountId, name) => {
       type Binding = { type?: string; name?: string; text?: string };
       let settings: { bindings?: Binding[] } | null;

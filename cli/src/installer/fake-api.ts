@@ -132,7 +132,6 @@ export const createFakeApi = (seed: Partial<FakeState> = {}): CloudflareApi & { 
       state.subdomain = subdomain;
     },
     countWorkers: async () => state.otherWorkers + Object.keys(state.scripts).length,
-    scriptExists: async (_accountId, name) => name in state.scripts,
     // Mirrors GET …/scripts/{name}/settings: identity comes from bindings only, never from health.
     getScriptInfo: async (_accountId, name) => {
       const s = state.scripts[name];

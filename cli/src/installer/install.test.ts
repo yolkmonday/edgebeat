@@ -64,6 +64,12 @@ const sourceBinding = (source: string): ScriptBinding => ({
   text: source,
 });
 
+const versionBinding = (version: string): ScriptBinding => ({
+  type: "plain_text",
+  name: "EDGEBEAT_VERSION",
+  text: version,
+});
+
 const installedState = (
   over: { version?: string; source?: string; migrations?: string[] } = {},
 ): Partial<FakeState> => ({
@@ -80,6 +86,7 @@ const installedState = (
         { type: "d1", name: "DB", id: "u1" },
         { type: "assets", name: "ASSETS" },
         sourceBinding(over.source ?? "cli"),
+        versionBinding(over.version ?? "0.1.0"),
       ],
       secrets: { ENCRYPTION_KEY: "existing-key", ADMIN_PASSWORD: "existing-password" },
     }),
@@ -123,6 +130,7 @@ describe("install", () => {
       { type: "d1", name: "DB", id: db?.uuid ?? "" },
       { type: "assets", name: "ASSETS" },
       sourceBinding("cli"),
+      versionBinding("0.1.0"),
     ]);
     expect(script?.assetsJwt).toBe("jwt-edgebeat");
     expect(script?.crons).toEqual(["* * * * *"]);
@@ -135,6 +143,8 @@ describe("install", () => {
     expect(result.version).toBe("0.1.0");
     expect(result.generatedPassword).toHaveLength(24);
     expect(script?.secrets.ADMIN_PASSWORD).toBe(result.generatedPassword ?? "");
+    expect(result.warnings).toEqual([]);
+    expect(api.state.verifiedAccounts).toEqual(["acc"]);
   });
 
   test("uses a given admin password and reports none generated", async () => {
@@ -220,7 +230,7 @@ describe("install", () => {
     expect(api.state.writes).toEqual([]);
   });
 
-  test("stops on d1 limit before changes", async () => {
+  test("ten D1 databases are not refused up front: creation decides (R14)", async () => {
     const d1 = Array.from({ length: 10 }, (_, i): FakeD1 => ({
       uuid: `d${i}`,
       name: `db${i}`,
@@ -228,8 +238,9 @@ describe("install", () => {
       executed: [],
     }));
     const api = createFakeApi({ subdomain: "acme", d1 });
-    expect((await caught(install(api, v010, baseOpts([])))).code).toBe("limit_d1");
-    expect(api.state.writes).toEqual([]);
+    const result = await install(api, v010, baseOpts([]));
+    expect(api.state.d1).toHaveLength(11);
+    expect(result.warnings).toEqual([]);
   });
 
   test("d1 limit does not apply when the database already exists", async () => {
@@ -244,10 +255,18 @@ describe("install", () => {
     expect(api.state.d1).toHaveLength(10);
   });
 
-  test("stops on worker limit before changes", async () => {
+  test("a full Worker count is a warning, not a refusal (R14)", async () => {
     const api = createFakeApi({ subdomain: "acme", otherWorkers: 100 });
-    expect((await caught(install(api, v010, baseOpts([])))).code).toBe("limit_workers");
-    expect(api.state.writes).toEqual([]);
+    const events: InstallEvent[] = [];
+    const result = await install(api, v010, baseOpts(events));
+    const warning = "This account already has 100 Workers, the free plan limit is 100. The upload may be refused.";
+    expect(result.warnings).toEqual([warning]);
+    expect(events.find((e) => e.step === "limits" && e.status === "done")).toEqual({
+      step: "limits",
+      status: "done",
+      detail: warning,
+    });
+    expect(api.state.scripts.edgebeat?.version).toBe("0.1.0");
   });
 
   test("missing token permission stops before changes and names it", async () => {
@@ -274,17 +293,21 @@ describe("install", () => {
     expect(api.state.writes).toEqual([]);
   });
 
-  test("health that never reaches the bundle version fails with the url", async () => {
+  test("health that never reaches the bundle version is a warning naming the url (R13)", async () => {
     const api = createFakeApi({ subdomain: "acme", healthOverride: () => ({ ok: true, version: "0.0.9" }) });
     const events: InstallEvent[] = [];
-    const err = await caught(install(api, v010, baseOpts(events)));
-    expect(err.code).toBe("health_failed");
-    expect(err.message).toContain("https://edgebeat.acme.workers.dev/api/v1/health");
-    expect(events.at(-1)).toMatchObject({ step: "health", status: "fail" });
+    const result = await install(api, v010, baseOpts(events));
+    expect(result.warnings).toEqual([
+      "Installed, but https://edgebeat.acme.workers.dev/ still answers with version 0.0.9 instead of 0.1.0. It can take a minute to switch: reload it later.",
+    ]);
+    expect(events.at(-1)).toMatchObject({ step: "health", status: "skip" });
   });
 
   test("a failure after secrets were set still hands back the generated password", async () => {
-    const api = createFakeApi({ subdomain: "acme", healthOverride: () => null });
+    const api = createFakeApi({ subdomain: "acme" });
+    api.putSchedules = async () => {
+      throw makeInstallError("api_error", "schedules down");
+    };
     const err = await install(api, v010, baseOpts([])).catch((e: unknown) => e);
     const generated = (err as { generatedPassword?: string }).generatedPassword;
     expect(generated).toMatch(/^[A-Za-z0-9]{24}$/);
@@ -345,7 +368,12 @@ describe("update", () => {
     const put = state.writes.find((w) => w.method === "putScript");
     expect(put?.args[2]).toEqual({
       version: "0.2.0",
-      bindings: [{ type: "d1", name: "DB", id: "u1" }, { type: "assets", name: "ASSETS" }, sourceBinding("cli")],
+      bindings: [
+        { type: "d1", name: "DB", id: "u1" },
+        { type: "assets", name: "ASSETS" },
+        sourceBinding("cli"),
+        versionBinding("0.2.0"),
+      ],
     });
     expect(script?.version).toBe("0.2.0");
     expect(result).toEqual({
@@ -353,7 +381,9 @@ describe("update", () => {
       adminUrl: "https://edgebeat.acme.workers.dev/admin",
       version: "0.2.0",
       generatedPassword: null,
+      warnings: [],
     });
+    expect(state.verifiedAccounts).toEqual(["acc"]);
   });
 
   test("update refuses a git managed install with the exact copy", async () => {
@@ -479,5 +509,155 @@ describe("resume and safety guards", () => {
     expect(result.generatedPassword).toBeNull();
     const done = events.find((e) => e.step === "secrets" && e.status === "done");
     expect(done && "detail" in done ? done.detail : "").toContain("admin password already set — kept");
+  });
+});
+
+describe("final review: identity via the Cloudflare API (R13)", () => {
+  const updateOpts = (events: InstallEvent[], over: Partial<InstallOptions> = {}) => {
+    const { adminPassword: _a, subdomain: _s, ...rest } = baseOpts(events, over);
+    return rest;
+  };
+  const UNREACHABLE =
+    "Installed, but workers.dev isn't reachable from this network — open https://edgebeat.acme.workers.dev/ in a browser or try another network.";
+
+  test("workers.dev unreachable: install still succeeds with a warning", async () => {
+    const api = createFakeApi({ subdomain: "acme", healthOverride: () => null });
+    const events: InstallEvent[] = [];
+    const result = await install(api, v010, baseOpts(events));
+    expect(result.warnings).toEqual([UNREACHABLE]);
+    expect(result.statusUrl).toBe("https://edgebeat.acme.workers.dev/");
+    expect(events.at(-1)).toEqual({ step: "health", status: "skip", detail: "workers.dev not reachable from here" });
+    expect(api.state.scripts.edgebeat?.crons).toEqual(["* * * * *"]);
+  });
+
+  test("workers.dev unreachable: a complete install is still recognised as already installed", async () => {
+    const api = createFakeApi({ ...installedState(), healthOverride: () => null });
+    const err = await caught(install(api, v010, baseOpts([])));
+    expect(err).toEqual({
+      code: "already_installed",
+      message: 'Edgebeat 0.1.0 is already installed as "edgebeat". Use update to upgrade it.',
+    });
+    expect(api.state.writes).toEqual([]);
+  });
+
+  test("workers.dev unreachable: setup resumes our own partial install", async () => {
+    const seed = installedState();
+    const script = seed.scripts?.edgebeat;
+    if (script) script.secrets = { ENCRYPTION_KEY: "existing-key" };
+    const api = createFakeApi({ ...seed, healthOverride: () => null });
+    const result = await install(api, v010, baseOpts([]));
+    expect(result.generatedPassword).toHaveLength(24);
+    expect(result.warnings).toEqual([UNREACHABLE]);
+  });
+
+  test("workers.dev unreachable: update finds the install and finishes with a warning", async () => {
+    const api = createFakeApi({ ...installedState({ source: "cloud" }), healthOverride: () => null });
+    const result = await update(api, v010, updateOpts([], { source: "cli" }));
+    expect(result.warnings).toEqual([UNREACHABLE.replace("Installed", "Updated")]);
+    expect(api.state.scripts.edgebeat?.bindings).toContainEqual(sourceBinding("cloud"));
+  });
+
+  test("a worker without the source binding is foreign even if health claims Edgebeat", async () => {
+    const api = createFakeApi({
+      subdomain: "acme",
+      scripts: { edgebeat: fakeScript({ version: "0.1.0", workersDev: true }) },
+      healthOverride: () => ({ ok: true, version: "0.1.0", installSource: "cli" }),
+    });
+    expect((await caught(install(api, v010, baseOpts([])))).code).toBe("name_taken");
+    expect((await caught(update(api, v010, updateOpts([])))).code).toBe("not_installed");
+    expect(api.state.writes).toEqual([]);
+  });
+
+  test("a git install is git managed for update even when health is unreachable", async () => {
+    const api = createFakeApi({ ...installedState({ source: "git" }), healthOverride: () => null });
+    expect((await caught(update(api, v010, updateOpts([])))).code).toBe("git_managed");
+    expect(api.state.writes).toEqual([]);
+  });
+
+  test("an install from before EDGEBEAT_VERSION (no version binding) still updates", async () => {
+    const seed = installedState();
+    const script = seed.scripts?.edgebeat;
+    if (script) script.bindings = script.bindings.filter((b) => b.name !== "EDGEBEAT_VERSION");
+    const api = createFakeApi(seed);
+    const events: InstallEvent[] = [];
+    await update(api, v010, updateOpts(events));
+    expect(events.find((e) => e.step === "verify" && e.status === "done")).toMatchObject({ detail: "installed version unknown" });
+    expect(api.state.scripts.edgebeat?.bindings).toContainEqual(versionBinding("0.1.0"));
+  });
+});
+
+describe("final review: code downgrade guard (R18)", () => {
+  const updateOpts = (events: InstallEvent[]) => {
+    const { adminPassword: _a, subdomain: _s, ...rest } = baseOpts(events);
+    return rest;
+  };
+  const NEWER_CODE = "This Edgebeat (v0.10.0) is newer than this installer (v0.9.0). Run bunx edgebeat@latest update.";
+  const v090 = bundle("0.9.0", v010.migrations);
+
+  test("update refuses installed code newer than the bundle, zero writes", async () => {
+    const api = createFakeApi(installedState({ version: "0.10.0" }));
+    expect(await caught(update(api, v090, updateOpts([])))).toEqual({ code: "api_error", message: NEWER_CODE });
+    expect(api.state.writes).toEqual([]);
+  });
+
+  test("setup resume refuses installed code newer than the bundle, zero writes", async () => {
+    const seed = installedState({ version: "0.10.0" });
+    const script = seed.scripts?.edgebeat;
+    if (script) script.secrets = {};
+    const api = createFakeApi(seed);
+    expect(await caught(install(api, v090, baseOpts([])))).toEqual({ code: "api_error", message: NEWER_CODE });
+    expect(api.state.writes).toEqual([]);
+  });
+
+  test("same, older and prerelease-of-newer installed versions are allowed", async () => {
+    for (const installed of ["0.9.0", "0.8.12", "0.9.0-beta.1"]) {
+      const api = createFakeApi(installedState({ version: installed }));
+      const result = await update(api, v090, updateOpts([]));
+      expect(result.version).toBe("0.9.0");
+    }
+  });
+
+  test("a prerelease bundle refuses its own final release", async () => {
+    const api = createFakeApi(installedState({ version: "1.0.0" }));
+    const err = await caught(update(api, bundle("1.0.0-rc.1", v010.migrations), updateOpts([])));
+    expect(err.message).toBe(
+      "This Edgebeat (v1.0.0) is newer than this installer (v1.0.0-rc.1). Run bunx edgebeat@latest update.",
+    );
+  });
+});
+
+describe("final review: token and password hooks (R15)", () => {
+  test("verifyToken probes the chosen account", async () => {
+    const api = createFakeApi({ subdomain: "acme" });
+    await install(api, v010, baseOpts([], { accountId: "acc-2" }));
+    expect(api.state.verifiedAccounts).toEqual(["acc-2"]);
+  });
+
+  test("onGeneratedPassword fires right after the secret is set, before later steps", async () => {
+    const api = createFakeApi({ subdomain: "acme" });
+    const seen: { password: string; writesBefore: string[] }[] = [];
+    const result = await install(
+      api,
+      v010,
+      baseOpts([], {
+        onGeneratedPassword: (password) =>
+          seen.push({ password, writesBefore: api.state.writes.map((w) => w.method) }),
+      }),
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.password).toBe(result.generatedPassword ?? "");
+    expect(seen[0]?.writesBefore.at(-1)).toBe("putSecret");
+    expect(seen[0]?.writesBefore).not.toContain("putSchedules");
+  });
+
+  test("onGeneratedPassword is not called for a given or an existing password", async () => {
+    const calls: string[] = [];
+    const given = createFakeApi({ subdomain: "acme" });
+    await install(given, v010, baseOpts([], { adminPassword: "a-strong-password", onGeneratedPassword: (p) => calls.push(p) }));
+    const existing = createFakeApi(installedState());
+    const script = existing.state.scripts.edgebeat;
+    if (script) delete script.secrets.ENCRYPTION_KEY;
+    await install(existing, v010, baseOpts([], { onGeneratedPassword: (p) => calls.push(p) }));
+    expect(calls).toEqual([]);
   });
 });
