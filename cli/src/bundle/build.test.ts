@@ -43,15 +43,12 @@ describe("buildBundle", () => {
   });
 
   test("content types", () => {
-    for (const m of manifest.modules) {
-      const expected =
-        m.name.endsWith(".js") || m.name.endsWith(".mjs")
-          ? "application/javascript+module"
-          : m.name.endsWith(".map")
-            ? "application/source-map"
-            : "application/octet-stream";
-      expect(m.contentType).toBe(expected);
-    }
+    for (const m of manifest.modules) expect(m.contentType).toBe("application/javascript+module");
+  });
+
+  test("source maps are not shipped, like wrangler deploy (R17)", () => {
+    expect(manifest.modules.filter((m) => m.name.endsWith(".map"))).toEqual([]);
+    expect(readdirSync(join(out, "worker")).filter((n) => n.endsWith(".map"))).toEqual([]);
   });
 });
 

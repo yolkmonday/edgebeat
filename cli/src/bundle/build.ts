@@ -54,11 +54,7 @@ const removeTrailingCommas = (src: string): string => {
   return out;
 };
 
-const contentTypeFor = (name: string): string => {
-  if (name.endsWith(".js") || name.endsWith(".mjs")) return "application/javascript+module";
-  if (name.endsWith(".map")) return "application/source-map";
-  return "application/octet-stream";
-};
+const MODULE_CONTENT_TYPE = "application/javascript+module";
 
 const run = (cmd: string, args: string[], cwd: string): Promise<void> =>
   new Promise((done, fail) => {
@@ -103,8 +99,9 @@ export const buildBundle = async (repoRoot: string, outDir: string): Promise<Rel
     await rm(out, { recursive: true, force: true });
     await mkdir(join(out, "worker"), { recursive: true });
 
-    const files = (await listFiles(tmp)).filter((n) => /\.(m?js|map)$/.test(n));
-    const mainModule = files.find((n) => n === "index.js") ?? files.find((n) => /\.m?js$/.test(n));
+    // JS modules only: source maps are not uploaded, same as `wrangler deploy` by default (R17).
+    const files = (await listFiles(tmp)).filter((n) => /\.m?js$/.test(n));
+    const mainModule = files.find((n) => n === "index.js") ?? files[0];
     if (!mainModule) throw new Error("wrangler dry-run produced no worker module");
     for (const name of files) await cp(join(tmp, name), join(out, "worker", name));
 
@@ -120,7 +117,7 @@ export const buildBundle = async (repoRoot: string, outDir: string): Promise<Rel
       compatibilityDate: config.compatibility_date,
       compatibilityFlags: config.compatibility_flags ?? [],
       mainModule,
-      modules: files.map((name) => ({ name, contentType: contentTypeFor(name) })),
+      modules: files.map((name) => ({ name, contentType: MODULE_CONTENT_TYPE })),
       crons: config.triggers?.crons ?? [],
       assetsConfig: {
         run_worker_first: assets.run_worker_first ?? [],
