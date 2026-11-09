@@ -25,7 +25,7 @@ export const EmptyState = ({ illustration, title, body, actions, size = "md" }: 
         <h3 className={cn("font-semibold text-text", lg ? "text-2xl tracking-[-0.02em]" : "text-base")}>{title}</h3>
         <p className="text-sm text-muted">{body}</p>
       </div>
-      {actions ? <div className="flex flex-wrap items-center justify-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex w-full flex-wrap items-center justify-center gap-2">{actions}</div> : null}
     </div>
   );
 };

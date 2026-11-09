@@ -8,11 +8,12 @@ export type FieldProps = {
   helper?: ReactNode;
   error?: string;
   optional?: boolean;
+  hideLabel?: boolean;
   children: ReactNode;
 };
 
 /** Label above, control, then helper or error below. Injects aria wiring into a single element child. */
-export const Field = ({ label, htmlFor, helper, error, optional, children }: FieldProps) => {
+export const Field = ({ label, htmlFor, helper, error, optional, hideLabel, children }: FieldProps) => {
   const describedBy = error ? `${htmlFor}-error` : helper ? `${htmlFor}-helper` : undefined;
   const control = isValidElement(children)
     ? cloneElement(children as ReactElement<Record<string, unknown>>, {
@@ -24,7 +25,7 @@ export const Field = ({ label, htmlFor, helper, error, optional, children }: Fie
     : children;
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={htmlFor}>
+      <Label htmlFor={htmlFor} className={hideLabel ? "sr-only" : undefined}>
         {label}
         {optional ? <span className="ml-1 font-normal text-muted">(optional)</span> : null}
       </Label>

@@ -1,7 +1,7 @@
-import { Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { QuickAdd } from "@/features/monitors/QuickAdd";
 import { useUi } from "@/stores/ui";
 
 export const MonitorsEmpty = () => {
@@ -14,23 +14,23 @@ export const MonitorsEmpty = () => {
       title="No monitors yet"
       body="Add a website, a server port or a cron job. Until the first check runs, your status page shows Status unknown."
       actions={
-        <>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              resetSetup();
-              navigate("/setup");
-            }}
-          >
-            Run setup again
-          </Button>
-          <Button asChild>
-            <Link to="/monitors/new">
-              <Plus size={16} aria-hidden />
-              Add monitor
-            </Link>
-          </Button>
-        </>
+        <div className="flex w-full max-w-md flex-col gap-4 text-left">
+          <QuickAdd autoFocus />
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button asChild variant="secondary">
+              <Link to="/monitors/new">More options</Link>
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                resetSetup();
+                navigate("/setup");
+              }}
+            >
+              Run setup again
+            </Button>
+          </div>
+        </div>
       }
     />
   );
