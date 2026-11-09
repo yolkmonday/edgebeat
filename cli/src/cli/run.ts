@@ -53,7 +53,7 @@ const isUsageError = (e: unknown): e is Error & { usage: true } =>
   e instanceof Error && (e as Error & { usage?: unknown }).usage === true;
 
 const resolveToken = async (args: Args, io: Io): Promise<string> => {
-  const given = args.apiToken ?? io.env.CLOUDFLARE_API_TOKEN;
+  const given = (args.apiToken ?? io.env.CLOUDFLARE_API_TOKEN)?.trim();
   if (given) return given;
   if (args.yes) {
     throw usageError("No API token. Pass --api-token or set CLOUDFLARE_API_TOKEN (required with --yes).");
@@ -61,14 +61,14 @@ const resolveToken = async (args: Args, io: Io): Promise<string> => {
   io.print("Edgebeat needs a Cloudflare API token with these permissions:");
   PERMISSIONS.forEach((p) => io.print(`  - ${p}`));
   io.print(`Create one at ${TOKEN_URL}`);
-  const token = await io.prompt("Paste your API token (input is hidden): ", { secret: true });
+  const token = (await io.prompt("Paste your API token (input is hidden): ", { secret: true })).trim();
   if (!token) throw usageError("No API token entered.");
   return token;
 };
 
 const resolveAccount = async (args: Args, io: Io, api: CloudflareApi): Promise<string> => {
-  const accounts: Account[] = await api.listAccounts();
   if (args.account) return args.account;
+  const accounts: Account[] = await api.listAccounts();
   if (accounts.length === 0) throw new Error("This token cannot see any Cloudflare account.");
   if (accounts.length === 1) return accounts[0].id;
   if (args.yes) {

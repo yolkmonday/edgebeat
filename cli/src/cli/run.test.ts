@@ -140,6 +140,42 @@ describe("run", () => {
     expect(h.installCalls).toHaveLength(0);
   });
 
+  test("--account skips listAccounts entirely", async () => {
+    const h = makeHarness({ env: { CLOUDFLARE_API_TOKEN: "t" } });
+    const deps: Deps = {
+      ...h.deps,
+      api: () =>
+        ({
+          listAccounts: async () => {
+            throw new Error("listAccounts must not be called");
+          },
+        }) as unknown as CloudflareApi,
+    };
+    expect(await run(["setup", "--yes", "--account", "a1"], deps)).toBe(0);
+    expect(h.installCalls[0].accountId).toBe("a1");
+  });
+
+  test("token from env is trimmed", async () => {
+    const h = makeHarness({ env: { CLOUDFLARE_API_TOKEN: "  padded-token\n" } });
+    expect(await run(["setup", "--yes"], h.deps)).toBe(0);
+    expect(h.tokens[0]).toBe("padded-token");
+  });
+
+  test("prompt rejecting with a usage error exits 2", async () => {
+    const h = makeHarness({});
+    const deps: Deps = {
+      ...h.deps,
+      io: {
+        ...h.deps.io,
+        prompt: async () => {
+          throw Object.assign(new Error("No input: pass --yes with flags or run in a terminal"), { usage: true });
+        },
+      },
+    };
+    expect(await run(["setup"], deps)).toBe(2);
+    expect(h.out.join("\n")).toContain("No input");
+  });
+
   test("--account wins over auto-pick", async () => {
     const h = makeHarness({
       env: { CLOUDFLARE_API_TOKEN: "t" },
