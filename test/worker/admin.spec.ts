@@ -113,7 +113,7 @@ describe("auth", () => {
     expect((await login("test-password")).status).toBe(429);
   }, 20_000);
 
-  it("login is 500 without a usable ENCRYPTION_KEY and 401 with empty ADMIN_PASSWORD", async () => {
+  it("login is 500 without a usable ENCRYPTION_KEY or with a weak ADMIN_PASSWORD", async () => {
     const run = (e: Record<string, unknown>, password: string) =>
       worker.fetch(
         new Request(`${BASE}/api/admin/login`, {
@@ -129,7 +129,14 @@ describe("auth", () => {
       expect(res.status).toBe(500);
       expect(res.headers.get("set-cookie")).toBeNull();
     }
-    expect((await run({ ADMIN_PASSWORD: "" }, "")).status).toBe(401);
+    // weak configured password: refused even when the right password is sent, never a session
+    for (const weak of ["", "change-me", "elevenchars"]) {
+      const res = await run({ ADMIN_PASSWORD: weak }, weak);
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "weak_admin_password" });
+      expect(res.headers.get("set-cookie")).toBeNull();
+    }
+    expect((await run({ ADMIN_PASSWORD: "twelve-chars" }, "twelve-chars")).status).toBe(204);
   });
 
   it("concurrent bad logins cannot bypass the rate limit", async () => {

@@ -9,6 +9,11 @@ const FAIL_DELAY_MS = 500;
 const MAX_FAILURES = 10;
 const WINDOW_MS = 60_000;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const MIN_PASSWORD_LENGTH = 12;
+const PLACEHOLDER_PASSWORD = "change-me"; // .dev.vars.example
+
+const weakPassword = (p: string | undefined): boolean =>
+  p === undefined || p === PLACEHOLDER_PASSWORD || p.length < MIN_PASSWORD_LENGTH;
 
 type AppEnv = { Bindings: Env };
 
@@ -115,6 +120,8 @@ export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
 export const auth = new Hono<AppEnv>();
 
 auth.post("/login", async (c) => {
+  // a placeholder or short secret is a deploy mistake: refuse to issue any session
+  if (weakPassword(c.env.ADMIN_PASSWORD)) return c.json({ error: "weak_admin_password" }, 500);
   const now = Date.now();
   if (!reserveSlot(now)) return c.json({ error: "too_many_attempts" }, 429);
   const body: unknown = await c.req.json().catch(() => null);
