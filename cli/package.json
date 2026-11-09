@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": { "edgebeat": "dist/bin.js" },
-  "exports": { "./installer": "./dist/installer.js" },
+  "exports": { "./installer": "./dist/installer/index.js" },
   "files": ["dist", "bundle"],
   "engines": { "node": ">=20" },
   "scripts": {
