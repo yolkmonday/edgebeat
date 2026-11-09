@@ -21,3 +21,10 @@ export const estimateWritesToday = (i: UsageInput): { value: number; projected: 
   );
   return { value, projected: Math.round((value * 1440) / Math.max(i.minutesElapsed, 15)) };
 };
+
+/**
+ * Ticks run today, assuming the cron fired every minute from 00:00 UTC up to the last tick.
+ * Derived instead of counted: a `count(*)` over today's ticks reads up to 1440 rows per overview poll.
+ */
+export const ticksTodayEstimate = (dayStart: number, lastTickAt: number | null): number =>
+  lastTickAt === null || lastTickAt < dayStart ? 0 : Math.floor((lastTickAt - dayStart) / 60_000) + 1;

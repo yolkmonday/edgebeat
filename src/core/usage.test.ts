@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { estimateWritesToday } from "./usage";
+import { estimateWritesToday, ticksTodayEstimate } from "./usage";
 
 const base = { minutesElapsed: 0, ticksToday: 0, activeChecked: 0, eventsToday: 0, heartbeatPeriodsS: [] };
 
@@ -30,5 +30,17 @@ describe("estimateWritesToday", () => {
     const r = estimateWritesToday({ ...base, minutesElapsed: 3, ticksToday: 3 });
     expect(r.value).toBe(9);
     expect(r.projected).toBe(Math.round((9 * 1440) / 15));
+  });
+});
+
+describe("ticksTodayEstimate", () => {
+  const dayStart = Date.UTC(2026, 10, 9);
+  it("no tick yet, or last tick before today → 0", () => {
+    expect(ticksTodayEstimate(dayStart, null)).toBe(0);
+    expect(ticksTodayEstimate(dayStart, dayStart - 1)).toBe(0);
+  });
+  it("one tick per minute up to the last tick, inclusive", () => {
+    expect(ticksTodayEstimate(dayStart, dayStart + 5_000)).toBe(1);
+    expect(ticksTodayEstimate(dayStart, dayStart + 90 * 60_000 + 3_000)).toBe(91);
   });
 });
