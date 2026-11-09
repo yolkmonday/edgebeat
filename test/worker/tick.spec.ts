@@ -172,6 +172,15 @@ describe("runTick", () => {
     expect(caps).toEqual([44, 1000]);
   });
 
+  it("drops a paused monitor's entry from snapshot.current", async () => {
+    await db.insert(t.monitors).values([httpMonitor("a"), httpMonitor("b")]);
+    const { fn } = fakeRunner(() => ok());
+    await runTick(env, at(DAY0 + 1), { runChecks: fn });
+    await db.update(t.monitors).set({ paused: 1 }).where(eq(t.monitors.id, "b"));
+    await runTick(env, at(DAY0 + 2), { runChecks: fn });
+    expect(Object.keys(JSON.parse((await readSnapshot()).current) as object)).toEqual(["a"]);
+  });
+
   it("reports a late heartbeat as heartbeat_late", async () => {
     const now = at(DAY0 + 1);
     await db.insert(t.monitors).values({

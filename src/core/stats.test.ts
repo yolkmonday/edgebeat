@@ -86,6 +86,15 @@ describe("downtimeSeconds", () => {
   test("unsorted events", () => {
     expect(downtimeSeconds([events[2]!, events[0]!, events[1]!], "up", 0, 100_000)).toBe(60);
   });
+  test("pausing ends a down interval; paused time is not downtime", () => {
+    const evs = [
+      { toState: "down" as const, at: 10_000 },
+      { toState: "paused" as const, at: 40_000 },
+      { toState: "pending" as const, at: 90_000 },
+    ];
+    expect(downtimeSeconds(evs, "up", 0, 100_000)).toBe(30);
+    expect(downtimeSeconds([], "paused", 0, 100_000)).toBe(0);
+  });
   test("maintenance overlap subtracted", () => {
     expect(downtimeSeconds(events, "up", 0, 100_000, [[20_000, 40_000]])).toBe(40);
   });

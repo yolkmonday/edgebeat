@@ -131,7 +131,10 @@ const decide = (
   prevCurrent: Record<string, CurrentEntry>,
   now: number,
 ): Decisions => {
-  const current = Object.fromEntries(Object.entries(prevCurrent).filter(([id]) => byId.has(id)));
+  // deleted and paused monitors leave current: an unpaused monitor reads pending until its next check
+  const current = Object.fromEntries(
+    Object.entries(prevCurrent).filter(([id]) => byId.has(id) && byId.get(id)!.paused === 0),
+  );
   const out: Decisions = { stateRows: [], eventRows: [], transitions: [], current };
   for (const r of results) {
     const m = byId.get(r.monitorId);

@@ -1,10 +1,10 @@
 import { zValidator } from "@hono/zod-validator";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { Env } from "@/env";
 import { getDb } from "@/db/client";
-import { dailyStats, events, groups, heartbeats, monitors } from "@/db/schema";
+import { dailyStats, events, groups, heartbeats, monitors, monitorState, snapshot } from "@/db/schema";
 import { newId, newToken } from "@/lib/ids";
 import { assertMonitorUrl } from "@/lib/url-guard";
 
@@ -190,6 +190,45 @@ const findRow = async (c: AppContext, id: string): Promise<Row | undefined> =>
 
 const origin = (c: AppContext) => new URL(c.req.url).origin;
 
+/**
+ * Statements for a pause flip. Pause: state {paused, 0} + event x→paused (downtime stops).
+ * Unpause: state {pending, 0} + event paused→pending, the pre-pause public entry is dropped,
+ * and heartbeats forget beats so they stay pending until the next one (none were accepted while paused).
+ */
+const pauseLifecycle = async (c: AppContext, row: Row, paused: boolean, now: number) => {
+  const db = getDb(c.env);
+  const [prev] = await db
+    .select({ state: monitorState.state })
+    .from(monitorState)
+    .where(eq(monitorState.monitorId, row.id))
+    .limit(1);
+  const from = paused ? (prev?.state ?? "pending") : "paused";
+  const to = paused ? "paused" : "pending";
+  return [
+    db
+      .insert(monitorState)
+      .values({ monitorId: row.id, state: to, consecutiveFailures: 0, lastChangeAt: now })
+      .onConflictDoUpdate({
+        target: monitorState.monitorId,
+        set: { state: to, consecutiveFailures: 0, lastChangeAt: now },
+      }),
+    ...(from === to
+      ? []
+      : [db.insert(events).values({ monitorId: row.id, fromState: from, toState: to, at: now, reason: paused ? "paused" : "unpaused" })]),
+    ...(paused
+      ? []
+      : [
+          db
+            .update(snapshot)
+            .set({ current: sql`json_remove(${snapshot.current}, ${`$."${row.id}"`})` })
+            .where(eq(snapshot.id, 1)),
+        ]),
+    ...(!paused && row.type === "heartbeat"
+      ? [db.update(heartbeats).set({ lastBeatAt: null, lastFailAt: null }).where(eq(heartbeats.monitorId, row.id))]
+      : []),
+  ];
+};
+
 monitorsApi.get("/", async (c) => {
   const rows = await getDb(c.env).select().from(monitors).orderBy(monitors.sort, monitors.name);
   return c.json(rows.map((r) => toApi(r, origin(c))));
@@ -247,9 +286,12 @@ monitorsApi.patch("/:id", zValidator("json", patchInput, onInvalid), async (c) =
   const bad = await checkReferences(c, input);
   if (bad) return bad;
 
-  const cols = { ...toColumns(input), updatedAt: Date.now() };
+  const now = Date.now();
+  const cols = { ...toColumns(input), updatedAt: now };
+  const db = getDb(c.env);
+  const lifecycle = input.paused !== (row.paused === 1) ? await pauseLifecycle(c, row, input.paused, now) : [];
   try {
-    await getDb(c.env).update(monitors).set(cols).where(eq(monitors.id, row.id));
+    await db.batch([db.update(monitors).set(cols).where(eq(monitors.id, row.id)), ...lifecycle]);
   } catch (e) {
     if (isUnique(e)) return c.json({ error: "slug_conflict" }, 409);
     throw e;

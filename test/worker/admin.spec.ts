@@ -276,6 +276,54 @@ describe("monitors", () => {
     expect((await call(cookie, "PATCH", `/monitors/${m.id}`, { method: "HEAD" })).status).toBe(400);
   });
 
+  it("pause and unpause write the state lifecycle; heartbeat unpause clears beats", async () => {
+    const m = (await (await call(cookie, "POST", "/monitors", httpMonitor())).json()) as { id: string };
+    await db.insert(t.monitorState).values({ monitorId: m.id, state: "down", consecutiveFailures: 2, lastChangeAt: 1 });
+    await db.delete(t.snapshot);
+    await db.insert(t.snapshot).values({
+      id: 1,
+      lastTickAt: 0,
+      current: JSON.stringify({ [m.id]: { state: "down", lastCheckedAt: 1, latencyMs: null }, other: { state: "up", lastCheckedAt: 1, latencyMs: 1 } }),
+      bars: "{}",
+    });
+    const stateOf = async () => (await db.select().from(t.monitorState).where(eq(t.monitorState.monitorId, m.id)))[0];
+    const eventsOf = async () =>
+      (await db.select().from(t.events).where(eq(t.events.monitorId, m.id)).orderBy(t.events.id)).map((e) => [
+        e.fromState,
+        e.toState,
+        e.reason,
+      ]);
+
+    expect((await call(cookie, "PATCH", `/monitors/${m.id}`, { paused: true })).status).toBe(200);
+    expect(await stateOf()).toMatchObject({ state: "paused", consecutiveFailures: 0 });
+    expect(await eventsOf()).toEqual([["down", "paused", "paused"]]);
+
+    // no flip, no lifecycle writes
+    await call(cookie, "PATCH", `/monitors/${m.id}`, { paused: true, name: "Again" });
+    expect(await eventsOf()).toHaveLength(1);
+
+    expect((await call(cookie, "PATCH", `/monitors/${m.id}`, { paused: false })).status).toBe(200);
+    expect(await stateOf()).toMatchObject({ state: "pending", consecutiveFailures: 0 });
+    expect(await eventsOf()).toEqual([
+      ["down", "paused", "paused"],
+      ["paused", "pending", "unpaused"],
+    ]);
+    // the stale pre-pause entry is gone from the public snapshot; others untouched
+    const [snap] = await db.select().from(t.snapshot);
+    expect(Object.keys(JSON.parse(snap!.current) as object)).toEqual(["other"]);
+    await db.delete(t.snapshot);
+
+    const hb = (await (await call(cookie, "POST", "/monitors", {
+      name: "Cron", slug: "cron", type: "heartbeat", intervalMin: 5, heartbeatPeriodS: 300, heartbeatGraceS: 0, paused: true,
+    })).json()) as { id: string };
+    await db.update(t.heartbeats).set({ lastBeatAt: 5, lastFailAt: 6 }).where(eq(t.heartbeats.monitorId, hb.id));
+    await call(cookie, "PATCH", `/monitors/${hb.id}`, { paused: false });
+    expect((await db.select().from(t.heartbeats).where(eq(t.heartbeats.monitorId, hb.id)))[0]).toMatchObject({
+      lastBeatAt: null,
+      lastFailAt: null,
+    });
+  });
+
   it("patch slug conflict gives 409", async () => {
     await call(cookie, "POST", "/monitors", httpMonitor());
     const b = (await (await call(cookie, "POST", "/monitors", httpMonitor({ slug: "other" }))).json()) as { id: string };
