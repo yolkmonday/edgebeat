@@ -31,11 +31,14 @@ Commands:
   --version  Print the CLI version
 
 Flags:
-  --api-token <token>      Cloudflare API token (or set CLOUDFLARE_API_TOKEN)
+  --api-token <token>      Cloudflare API token. Prefer CLOUDFLARE_API_TOKEN: flags
+                           are visible in ps and shell history
   --account <id>           Cloudflare account id (asked when you have several)
   --name <name>            Worker and database name (default: edgebeat)
-  --admin-password <p>     Admin password, at least 12 characters (generated if empty)
-  --subdomain <s>          workers.dev subdomain, used only if the account has none
+  --admin-password <p>     setup only: admin password, at least 12 characters
+                           (generated if empty)
+  --subdomain <s>          setup only: workers.dev subdomain, used only if the
+                           account has none
   --yes                    Non-interactive: never ask questions`;
 
 export const parseArgs = (argv: string[]): ParseResult => {

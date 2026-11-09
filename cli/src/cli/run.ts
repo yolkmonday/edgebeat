@@ -106,13 +106,26 @@ const resolvePassword = async (args: Args, io: Io, installer: Installer): Promis
   throw usageError("Too many invalid passwords.");
 };
 
-const printResult = (io: Io, result: InstallResult): void => {
+// Prints a generated admin password at most once per run, whichever path sees it first (R11, R15).
+const createPasswordPrinter = (io: Io) => {
+  let shown = false;
+  return (password: string | null | undefined, keepHint = false): void => {
+    if (shown || !password) return;
+    shown = true;
+    if (keepHint) io.print("");
+    io.print(`Admin password (shown once): ${password}`);
+    if (keepHint) io.print("Keep it: re-running setup or update keeps this password.");
+  };
+};
+
+const printResult = (io: Io, result: InstallResult, printPassword: (p: string | null) => void): void => {
   const c = makeColors(io.isTTY);
   io.print("");
   io.print(c.bold(`Edgebeat ${result.version} is ready.`));
   io.print(`Status page: ${result.statusUrl}`);
   io.print(`Admin:       ${result.adminUrl}`);
-  if (result.generatedPassword) io.print(`Admin password (shown once): ${result.generatedPassword}`);
+  printPassword(result.generatedPassword);
+  for (const w of result.warnings) io.print(`${c.yellow("!")} ${w}`);
 };
 
 const installWithRetry = async (
@@ -122,19 +135,23 @@ const installWithRetry = async (
   bundle: ReleaseBundle,
   accountId: string,
   adminPassword: string | undefined,
-  base: Pick<InstallOptions, "name" | "source" | "onEvent">,
+  base: Pick<InstallOptions, "name" | "source" | "onEvent" | "onGeneratedPassword">,
   onRetry: () => void,
 ): Promise<InstallResult> => {
   const { io, installer } = deps;
   let subdomain = args.subdomain;
+  let prompted = false;
   for (let attempt = 0; ; attempt++) {
     try {
       return await installer.install(api, bundle, { ...base, accountId, adminPassword, subdomain });
     } catch (e) {
-      const needsSubdomain = isInstallError(e) && e.code === "no_subdomain";
+      // A subdomain typed at the prompt that the installer rejects is asked again, like the password (M8).
+      const needsSubdomain =
+        isInstallError(e) && (e.code === "no_subdomain" || (prompted && e.code === "invalid_name"));
       if (!needsSubdomain || args.yes || attempt >= SUBDOMAIN_ATTEMPTS) throw e;
       onRetry();
       subdomain = await io.prompt("Your account has no workers.dev subdomain yet. Choose one: ");
+      prompted = true;
       if (!subdomain) throw e;
     }
   }
@@ -162,8 +179,14 @@ export const run = async (argv: string[], deps: Deps): Promise<number> => {
 
   const c = makeColors(io.isTTY);
   const checklist = createChecklist((l) => io.print(l), io.isTTY);
+  const printPassword = createPasswordPrinter(io);
 
   try {
+    if (args.command === "update" && (args.adminPassword !== undefined || args.subdomain !== undefined)) {
+      throw usageError(
+        "update never changes the admin password or the workers.dev subdomain. Remove --admin-password and --subdomain.",
+      );
+    }
     try {
       installer.validateName(args.name);
     } catch (e) {
@@ -177,16 +200,24 @@ export const run = async (argv: string[], deps: Deps): Promise<number> => {
 
     if (args.command === "update") {
       const bundle = await deps.bundle();
-      printResult(io, await installer.update(api, bundle, { accountId, ...base }));
+      printResult(io, await installer.update(api, bundle, { accountId, ...base }), printPassword);
       return 0;
     }
 
     const adminPassword = await resolvePassword(args, io, installer);
     const bundle = await deps.bundle();
-    const result = await installWithRetry(deps, args, api, bundle, accountId, adminPassword, base, () =>
-      checklist.resetFailure(),
+    const onGeneratedPassword = (p: string) => printPassword(p, true);
+    const result = await installWithRetry(
+      deps,
+      args,
+      api,
+      bundle,
+      accountId,
+      adminPassword,
+      { ...base, onGeneratedPassword },
+      () => checklist.resetFailure(),
     );
-    printResult(io, result);
+    printResult(io, result, printPassword);
     return 0;
   } catch (e) {
     if (isUsageError(e)) {
@@ -203,11 +234,7 @@ export const run = async (argv: string[], deps: Deps): Promise<number> => {
     // The installer attaches a password it set before failing; a re-run keeps that secret,
     // so this is the only time it can be shown (R11).
     const generated = (e as { generatedPassword?: unknown } | null)?.generatedPassword;
-    if (typeof generated === "string" && generated) {
-      io.print("");
-      io.print(`Admin password (shown once): ${generated}`);
-      io.print("Keep it: re-running setup or update keeps this password.");
-    }
+    if (typeof generated === "string") printPassword(generated, true);
     return 1;
   }
 };

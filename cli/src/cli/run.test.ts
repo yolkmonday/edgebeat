@@ -301,4 +301,88 @@ describe("run", () => {
     expect(await run(["setup", "--yes", "--name", "Bad Name"], h.deps)).toBe(2);
     expect(await run(["setup", "--yes", "--admin-password", "short"], h.deps)).toBe(2);
   });
+
+  test("generated password is printed as soon as it is set, and only once", async () => {
+    const h = makeHarness({
+      env: { CLOUDFLARE_API_TOKEN: "t" },
+      install: async (o) => {
+        o.onGeneratedPassword?.("Early0Pass1234567890abcd");
+        o.onEvent?.({ step: "schedule", status: "done" });
+        return { ...RESULT, generatedPassword: "Early0Pass1234567890abcd" };
+      },
+    });
+    expect(await run(["setup", "--yes"], h.deps)).toBe(0);
+    const all = text(h);
+    expect(all.split("Early0Pass1234567890abcd")).toHaveLength(2);
+    const shown = h.out.findIndex((l) => l === "Admin password (shown once): Early0Pass1234567890abcd");
+    expect(shown).toBeGreaterThanOrEqual(0);
+    expect(shown).toBeLessThan(h.out.findIndex((l) => l.startsWith("✓ Schedule")));
+  });
+
+  test("a failure after the password hook does not print it a second time", async () => {
+    const h = makeHarness({
+      env: { CLOUDFLARE_API_TOKEN: "t" },
+      install: async (o) => {
+        o.onGeneratedPassword?.("Hook0Pass1234567890abcde");
+        throw Object.assign(makeInstallError("limit_cron", "no cron left"), {
+          generatedPassword: "Hook0Pass1234567890abcde",
+        });
+      },
+    });
+    expect(await run(["setup", "--yes"], h.deps)).toBe(1);
+    expect(text(h).split("Hook0Pass1234567890abcde")).toHaveLength(2);
+  });
+
+  test("warnings are printed after the result", async () => {
+    const warning = "Installed, but workers.dev isn't reachable from this network — open https://x/ in a browser.";
+    const h = makeHarness({
+      env: { CLOUDFLARE_API_TOKEN: "t" },
+      install: async () => ({ ...RESULT, warnings: [warning] }),
+      update: async () => ({ ...RESULT, warnings: [warning] }),
+    });
+    expect(await run(["setup", "--yes"], h.deps)).toBe(0);
+    expect(await run(["update", "--yes"], h.deps)).toBe(0);
+    expect(h.out.filter((l) => l === `! ${warning}`)).toHaveLength(2);
+  });
+
+  test("an invalid subdomain typed at the prompt is asked again (M8)", async () => {
+    const h = makeHarness({
+      env: { CLOUDFLARE_API_TOKEN: "t" },
+      answers: ["", "Bad Sub", "good-sub"],
+      install: async (o, call) => {
+        if (call === 1) throw makeInstallError("no_subdomain", "no workers.dev subdomain");
+        if (o.subdomain === "Bad Sub") {
+          o.onEvent?.({ step: "subdomain", status: "fail", error: { code: "invalid_name", message: "bad subdomain" } });
+          throw makeInstallError("invalid_name", "bad subdomain");
+        }
+        return RESULT;
+      },
+    });
+    expect(await run(["setup"], h.deps)).toBe(0);
+    expect(h.installCalls.map((c) => c.subdomain)).toEqual([undefined, "Bad Sub", "good-sub"]);
+    expect(h.prompts.filter((p) => p.includes("subdomain"))).toHaveLength(2);
+    expect(text(h)).toContain("bad subdomain");
+  });
+
+  test("an invalid --subdomain flag is not re-asked", async () => {
+    const h = makeHarness({
+      env: { CLOUDFLARE_API_TOKEN: "t" },
+      answers: [""],
+      install: async () => {
+        throw makeInstallError("invalid_name", "bad subdomain");
+      },
+    });
+    expect(await run(["setup", "--subdomain", "Bad Sub"], h.deps)).toBe(1);
+    expect(h.installCalls).toHaveLength(1);
+  });
+
+  test("update with --admin-password or --subdomain is a usage error (M9)", async () => {
+    for (const flag of [["--admin-password", STRONG], ["--subdomain", "me"]]) {
+      const h = makeHarness({ env: { CLOUDFLARE_API_TOKEN: "t" } });
+      expect(await run(["update", "--yes", ...flag], h.deps)).toBe(2);
+      expect(h.updateCalls).toHaveLength(0);
+      expect(h.tokens).toHaveLength(0);
+      expect(text(h)).toContain("update never changes the admin password or the workers.dev subdomain");
+    }
+  });
 });

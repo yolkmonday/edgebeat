@@ -15,7 +15,7 @@ const LABELS: Record<InstallStep, string> = {
 
 export const makeColors = (isTTY: boolean) => {
   const wrap = (code: number) => (s: string) => (isTTY ? `\u001b[${code}m${s}\u001b[0m` : s);
-  return { green: wrap(32), red: wrap(31), dim: wrap(2), bold: wrap(1) };
+  return { green: wrap(32), red: wrap(31), yellow: wrap(33), dim: wrap(2), bold: wrap(1) };
 };
 
 // Turns installer events into one checklist line per finished step.
