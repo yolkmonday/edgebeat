@@ -35,12 +35,20 @@ describe("estimateWritesToday", () => {
 
 describe("ticksTodayEstimate", () => {
   const dayStart = Date.UTC(2026, 10, 9);
+  const noon = dayStart + 12 * 3_600_000;
   it("no tick yet, or last tick before today → 0", () => {
-    expect(ticksTodayEstimate(dayStart, null)).toBe(0);
-    expect(ticksTodayEstimate(dayStart, dayStart - 1)).toBe(0);
+    expect(ticksTodayEstimate(dayStart, null, null)).toBe(0);
+    expect(ticksTodayEstimate(dayStart, null, dayStart - 1)).toBe(0);
   });
-  it("one tick per minute up to the last tick, inclusive", () => {
-    expect(ticksTodayEstimate(dayStart, dayStart + 5_000)).toBe(1);
-    expect(ticksTodayEstimate(dayStart, dayStart + 90 * 60_000 + 3_000)).toBe(91);
+  it("normal day: one tick per minute from 00:00 up to the last tick, inclusive", () => {
+    expect(ticksTodayEstimate(dayStart, dayStart, dayStart + 5_000)).toBe(1);
+    expect(ticksTodayEstimate(dayStart, dayStart, dayStart + 90 * 60_000 + 3_000)).toBe(91);
+  });
+  it("new install mid-day counts from the first tick of today", () => {
+    expect(ticksTodayEstimate(dayStart, noon, noon + 2_000)).toBe(1);
+    expect(ticksTodayEstimate(dayStart, noon, noon + 10 * 60_000)).toBe(11);
+  });
+  it("ignores a first tick before today", () => {
+    expect(ticksTodayEstimate(dayStart, dayStart - 60_000, dayStart + 60_000)).toBe(2);
   });
 });

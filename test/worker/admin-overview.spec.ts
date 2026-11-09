@@ -58,6 +58,22 @@ describe("overview", () => {
     expect(o.usage.requestsToday).toBeNull();
   });
 
+  it("estimates ticks from the first tick of today, not from midnight", async () => {
+    const now = Date.now();
+    const dayStart = Math.floor(now / DAY_MS) * DAY_MS;
+    const minute = Math.floor(now / 60_000);
+    await seedSnapshot(minute * 60_000);
+    await db.insert(t.ticks).values([
+      { minute: minute - 1, at: (minute - 1) * 60_000, results: "[]" },
+      { minute, at: minute * 60_000, results: "[]" },
+    ]);
+    const o = await get<Overview>("/overview");
+    // 2 ticks * 3 writes + hourly housekeeping rows; a midnight-based estimate would count every minute since 00:00
+    const hourly = Math.floor((now - dayStart) / 3_600_000) * 60;
+    expect(o.usage.d1WritesToday.value).toBe(6 + hourly);
+    expect(o.usage.d1WritesToday.source).toBe("estimate");
+  });
+
   it("has no limit on the paid plan", async () => {
     await db.insert(t.settings).values({ key: "plan", value: JSON.stringify("paid") });
     const o = await get<Overview>("/overview");

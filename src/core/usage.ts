@@ -23,8 +23,11 @@ export const estimateWritesToday = (i: UsageInput): { value: number; projected: 
 };
 
 /**
- * Ticks run today, assuming the cron fired every minute from 00:00 UTC up to the last tick.
+ * Ticks run today, assuming the cron fired every minute from the first tick of today (or 00:00 UTC) up to the last tick.
  * Derived instead of counted: a `count(*)` over today's ticks reads up to 1440 rows per overview poll.
  */
-export const ticksTodayEstimate = (dayStart: number, lastTickAt: number | null): number =>
-  lastTickAt === null || lastTickAt < dayStart ? 0 : Math.floor((lastTickAt - dayStart) / 60_000) + 1;
+export const ticksTodayEstimate = (dayStart: number, firstTickAt: number | null, lastTickAt: number | null): number => {
+  if (lastTickAt === null || lastTickAt < dayStart) return 0;
+  const from = Math.max(dayStart, firstTickAt ?? dayStart);
+  return Math.max(0, Math.floor((lastTickAt - from) / 60_000)) + 1;
+};

@@ -5,7 +5,7 @@ import { effectiveBudget, peakChecksPerMinute } from "@/core/budget";
 import { monitorStateAt } from "@/core/public-status";
 import { estimateWritesToday, ticksTodayEstimate } from "@/core/usage";
 import { getDb } from "@/db/client";
-import { events, monitors, settings, snapshot } from "@/db/schema";
+import { events, monitors, settings, snapshot, ticks } from "@/db/schema";
 import { fetchUsage } from "@/lib/cf-analytics";
 import { eventsQuery, toStateEvent } from "@/api/admin/event-rows";
 import { readSnapshot } from "@/api/admin/monitor-status";
@@ -33,7 +33,7 @@ overviewApi.get("/", async (c) => {
   const now = Date.now();
   const dayStart = Math.floor(now / DAY_MS) * DAY_MS;
   const db = getDb(c.env);
-  const [[monitorRows, [snap], settingRows, [eventCount], recent], analytics] = await Promise.all([
+  const [[monitorRows, [snap], settingRows, [eventCount], recent, [firstTick]], analytics] = await Promise.all([
     db.batch([
     db.select().from(monitors),
     // never the ~250 KB bars column
@@ -41,6 +41,8 @@ overviewApi.get("/", async (c) => {
     db.select().from(settings),
     db.select({ n: sql<number>`count(*)` }).from(events).where(gte(events.at, dayStart)),
     eventsQuery(db, { since: now - RECENT_DAYS * DAY_MS }, RECENT_MAX),
+    // ticks.minute is the primary key: one index seek, one row read
+    db.select({ minute: sql<number | null>`min(${ticks.minute})` }).from(ticks).where(gte(ticks.minute, dayStart / MIN_MS)),
     ]),
     fetchUsage(c.env, now),
   ]);
@@ -61,7 +63,7 @@ overviewApi.get("/", async (c) => {
   const estimate = estimateWritesToday({
     minutesElapsed,
     // derived, not counted: no scan of today's ticks on every 15 s poll
-    ticksToday: ticksTodayEstimate(dayStart, view.lastTickAt),
+    ticksToday: ticksTodayEstimate(dayStart, firstTick?.minute == null ? null : firstTick.minute * MIN_MS, view.lastTickAt),
     activeChecked: checks.filter((m) => m.paused === 0).length,
     eventsToday: eventCount?.n ?? 0,
     heartbeatPeriodsS: heartbeatRows.filter((m) => m.paused === 0 && m.heartbeatPeriodS).map((m) => m.heartbeatPeriodS!),
