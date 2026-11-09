@@ -149,6 +149,38 @@ describe("bearer auth", () => {
     expect(res.status).toBe(201);
   });
 
+  it("read scope hides beat url and header values; admin and cookie see them", async () => {
+    const created = await call({ cookie }, "POST", "/monitors", {
+      name: "Api",
+      slug: "api",
+      type: "http",
+      url: "https://example.com",
+      headers: { Authorization: "Bearer upstream-secret" },
+    });
+    const apiId = ((await created.json()) as { id: string }).id;
+    const hb = await call({ cookie }, "POST", "/monitors", { name: "Cron", slug: "cron", type: "heartbeat", heartbeatPeriodS: 3600, heartbeatGraceS: 300 });
+    const hbId = ((await hb.json()) as { id: string }).id;
+    const read = (await mint("read")).token;
+    const admin = (await mint("admin")).token;
+
+    const readList = await (await call({ bearer: read }, "GET", "/monitors")).text();
+    expect(readList).not.toContain("upstream-secret");
+    expect(readList).not.toContain("/beat/");
+    expect(readList).not.toContain("beatUrl");
+    expect(readList).toContain("Authorization");
+    const readOne = await (await call({ bearer: read }, "GET", `/monitors/${apiId}`)).text();
+    expect(readOne).not.toContain("upstream-secret");
+    const readHb = await (await call({ bearer: read }, "GET", `/monitors/${hbId}`)).text();
+    expect(readHb).not.toContain("/beat/");
+    const readExport = await (await call({ bearer: read }, "GET", "/export")).text();
+    expect(readExport).not.toContain("upstream-secret");
+
+    for (const auth of [{ bearer: admin }, { cookie }]) {
+      expect(await (await call(auth, "GET", "/monitors")).text()).toContain("upstream-secret");
+      expect(await (await call(auth, "GET", `/monitors/${hbId}`)).text()).toContain("/beat/");
+    }
+  });
+
   it("read token cannot mutate", async () => {
     const { token } = await mint("read");
     expect((await call({ bearer: token }, "GET", "/monitors")).status).toBe(200);

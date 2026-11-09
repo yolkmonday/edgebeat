@@ -12,6 +12,7 @@ import {
   DEFAULTS,
   isUnique,
   pauseLifecycle,
+  redactMonitor,
   toApiMonitor,
   toColumns,
   withoutUndefined,
@@ -52,9 +53,15 @@ const findRow = async (c: AppContext, id: string): Promise<Row | undefined> =>
 
 const origin = (c: AppContext) => new URL(c.req.url).origin;
 
+/** Read-scope tokens never see the beat url or header values. */
+const view = (c: AppContext, row: Row) => {
+  const m = toApiMonitor(row, origin(c));
+  return c.get("auth")?.scope === "read" ? redactMonitor(m) : m;
+};
+
 monitorsApi.get("/", async (c) => {
   const rows = await getDb(c.env).select().from(monitors).orderBy(monitors.sort, monitors.name);
-  return c.json(rows.map((r) => toApiMonitor(r, origin(c))));
+  return c.json(rows.map((r) => view(c, r)));
 });
 
 monitorsApi.post("/", zValidator("json", monitorInput, onInvalid), async (c) => {
@@ -91,7 +98,7 @@ monitorsApi.post("/", zValidator("json", monitorInput, onInvalid), async (c) => 
 
 monitorsApi.get("/:id", async (c) => {
   const row = await findRow(c, c.req.param("id"));
-  return row ? c.json(toApiMonitor(row, origin(c))) : c.json({ error: "not_found" }, 404);
+  return row ? c.json(view(c, row)) : c.json({ error: "not_found" }, 404);
 });
 
 monitorsApi.patch("/:id", zValidator("json", monitorPatch, onInvalid), async (c) => {

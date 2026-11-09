@@ -12,6 +12,7 @@ import {
   DEFAULTS,
   parseHeaders,
   pauseLifecycle,
+  redactHeaders,
   toColumns,
   withoutUndefined,
   type Input,
@@ -24,6 +25,8 @@ export const transferApi = new Hono<{ Bindings: Env }>();
 
 const MAX_STATEMENTS = 45;
 const MAX_MONITORS_PARSED = 1000; // cheap guard before per-monitor validation
+const MAX_GROUPS = 1000;
+const MAX_BODY_BYTES = 1024 * 1024;
 const MONITOR_COLUMNS = 27;
 
 type Db = ReturnType<typeof getDb>;
@@ -53,6 +56,7 @@ const readSettings = async (db: Db): Promise<SettingsValues> => {
 
 transferApi.get("/export", async (c) => {
   const db = getDb(c.env);
+  const readOnly = c.get("auth")?.scope === "read";
   const [current, groupRows, monitorRows] = await Promise.all([
     readSettings(db),
     db.select().from(groups).orderBy(groups.sort, groups.name),
@@ -66,6 +70,7 @@ transferApi.get("/export", async (c) => {
     groups: groupRows.map((g) => ({ slug: g.slug, name: g.name, sort: g.sort })),
     monitors: monitorRows.map((row) => {
       const { groupId: _g, ...rest } = toExportMonitor(row);
+      if (readOnly && rest.headers) rest.headers = redactHeaders(rest.headers);
       return { ...rest, group: row.groupId ? (slugById.get(row.groupId) ?? null) : null };
     }),
   };
@@ -116,7 +121,7 @@ const fileShape = z.object({
       checkBudget: z.number().int().min(1).max(10_000).nullable().optional(),
     })
     .optional(),
-  groups: z.array(z.object({ slug: z.string().regex(SLUG_RE), name: z.string().min(1).max(80), sort: z.number().int().default(0) })),
+  groups: z.array(z.object({ slug: z.string().regex(SLUG_RE), name: z.string().min(1).max(80), sort: z.number().int().default(0) })).max(MAX_GROUPS),
   monitors: z.array(z.record(z.string(), z.unknown())),
 });
 
@@ -126,15 +131,33 @@ const bool = (c: Context, name: string): boolean => c.req.query(name) === "true"
 
 type PlannedMonitor = { input: Input & typeof DEFAULTS; groupSlug: string | null };
 
-const dupes = (slugs: string[]): Set<string> =>
-  new Set(slugs.filter((s, i) => slugs.indexOf(s) !== i));
+const dupes = (slugs: string[]): Set<string> => {
+  const seen = new Set<string>();
+  const dup = new Set<string>();
+  for (const s of slugs) (seen.has(s) ? dup : seen).add(s);
+  return dup;
+};
+
+/** Reads the JSON body with a hard size cap; "too_large" when over, null when not valid JSON. */
+const readJsonCapped = async (c: Context): Promise<unknown | "too_large"> => {
+  const declared = Number(c.req.header("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return "too_large";
+  const buf = await c.req.arrayBuffer();
+  if (buf.byteLength > MAX_BODY_BYTES) return "too_large";
+  try {
+    return JSON.parse(new TextDecoder().decode(buf)) as unknown;
+  } catch {
+    return null;
+  }
+};
 
 transferApi.post("/import", async (c) => {
   const prune = bool(c, "prune");
   const dryRun = bool(c, "dryRun");
   const bad = (issues: Issue[]) => c.json({ error: "validation", issues }, 400);
 
-  const body: unknown = await c.req.json().catch(() => null);
+  const body = await readJsonCapped(c);
+  if (body === "too_large") return c.json({ error: "too_large" }, 413);
   const top = fileShape.safeParse(body);
   if (!top.success) return bad(top.error.issues.map((i) => issue(i.path as (string | number)[], i.message)));
   const file = top.data;
@@ -278,7 +301,10 @@ transferApi.post("/import", async (c) => {
     }
   }
 
-  const idChunks = <T,>(items: T[]) => chunkRows(items, 1).map((chunk) => chunk.slice(0, MAX_PARAMS - 1));
+  const idChunks = <T,>(items: T[]): T[][] => {
+    const size = MAX_PARAMS - 1;
+    return Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
+  };
   for (const chunk of idChunks(prunedMonitors.map((m) => m.id))) {
     stmts.push(db.delete(events).where(inArray(events.monitorId, chunk)));
     stmts.push(db.delete(dailyStats).where(inArray(dailyStats.monitorId, chunk)));

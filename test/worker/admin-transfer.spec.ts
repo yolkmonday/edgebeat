@@ -227,6 +227,38 @@ describe("import", () => {
     expect(await db.select().from(t.heartbeats)).toHaveLength(0);
   });
 
+  it("prune removes every row when more than 99 monitors and groups are pruned", async () => {
+    const N = 205;
+    const ids = Array.from({ length: N }, (_, i) => `m${i}`);
+    const now = Date.now();
+    const insert = async (stmts: unknown[]) => {
+      for (let i = 0; i < stmts.length; i += 40) await db.batch(stmts.slice(i, i + 40) as never);
+    };
+    await insert(ids.map((id, i) => db.insert(t.groups).values({ id: `g${i}`, slug: `grp-${i}`, name: `G${i}`, sort: 0 })));
+    await insert(
+      ids.map((id, i) =>
+        db.insert(t.monitors).values({ id, slug: `mon-${i}`, name: id, type: "tcp", host: "h.example.com", port: 1, groupId: `g${i}`, createdAt: now, updatedAt: now }),
+      ),
+    );
+    await insert(ids.map((id) => db.insert(t.events).values({ monitorId: id, fromState: "up", toState: "down", at: 1, reason: "timeout" })));
+    await insert(ids.map((id) => db.insert(t.dailyStats).values({ monitorId: id, day: "2026-11-01" })));
+
+    const res = await importFile(file([]), "?prune=true");
+    expect(res.status).toBe(200);
+    const summary = (await res.json()) as ImportSummary;
+    expect(summary.monitors.deleted).toHaveLength(N);
+    expect(summary.groups.deleted).toHaveLength(N);
+    expect(await counts()).toMatchObject({ monitors: 0, groups: 0, events: 0, stats: 0 });
+  });
+
+  it("rejects oversized bodies and too many groups with 413/400", async () => {
+    const huge = file([http("web", { body: "x".repeat(1024 * 1024) })]);
+    expect((await importFile(huge)).status).toBe(413);
+    const tooManyGroups = file([], Array.from({ length: 1001 }, (_, i) => ({ slug: `g-${i}`, name: "G", sort: 0 })));
+    expect((await importFile(tooManyGroups)).status).toBe(400);
+    expect((await importFile(file([http("web")]))).status).toBe(200);
+  });
+
   it("dryRun returns the same summary with zero writes", async () => {
     await seed();
     const before = await counts();

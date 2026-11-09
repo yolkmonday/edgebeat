@@ -50,6 +50,18 @@ export const toApiMonitor = (row: Row, origin: string) => {
 };
 export type ApiMonitor = ReturnType<typeof toApiMonitor>;
 
+export const REDACTED = "[redacted]";
+
+/** Redacts header values (keeps names). */
+export const redactHeaders = (headers: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(Object.keys(headers).map((k) => [k, REDACTED]));
+
+/** Read-scope view: no beat url (embeds the heartbeat token), no header values. */
+export const redactMonitor = (m: ApiMonitor): ApiMonitor => {
+  const { beatUrl: _b, ...rest } = m as ApiMonitor & { beatUrl?: string };
+  return { ...rest, headers: redactHeaders(rest.headers) };
+};
+
 export const withoutUndefined = <T extends object>(o: T): Partial<T> =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 
