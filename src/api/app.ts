@@ -6,10 +6,18 @@ import { auth, requireAdmin } from "@/api/admin/auth";
 import { groupsApi } from "@/api/admin/groups";
 import { monitorsApi } from "@/api/admin/monitors";
 import { settingsApi } from "@/api/admin/settings";
+import { VERSION } from "@/version";
 
 export const app = new Hono<{ Bindings: Env }>();
 
-app.get("/api/v1/health", (c) => c.json({ ok: true }));
+const INSTALL_SOURCES = ["cli", "cloud", "git"] as const;
+
+const parseInstallSource = (value: string | undefined) =>
+  INSTALL_SOURCES.find((source) => source === value) ?? null;
+
+app.get("/api/v1/health", (c) =>
+  c.json({ ok: true, version: VERSION, installSource: parseInstallSource(c.env.EDGEBEAT_INSTALL_SOURCE) }),
+);
 app.route("/beat", beat);
 app.route("/api/v1", publicApi);
 
