@@ -85,7 +85,10 @@ const splitStatements = (sql: string): string[] =>
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-const createEmulator = (opts: { version: string }) => {
+// What an ISP that blocks *.workers.dev serves instead (seen: resolver -> blockpage.xlaxiata.id).
+const BLOCK_PAGE = "<html><body>Internet Positif: this site is blocked</body></html>";
+
+const createEmulator = (opts: { version: string; workersDevBlocked?: boolean }) => {
   const accounts = [
     { id: "acc1", name: "Main" },
     { id: "acc2", name: "Side" },
@@ -183,8 +186,9 @@ const createEmulator = (opts: { version: string }) => {
     if (q && m === "POST") {
       const db = state.d1.find((d) => d.uuid === q[1]);
       if (!db) return fail(404, 7404, "database not found");
-      const { sql, params } = await body();
-      expect(params).toEqual([]);
+      const sent = await body();
+      expect(sent).toEqual({ sql: expect.any(String) }); // no params key when there are none (M6)
+      const { sql } = sent;
       return query(db, String(sql));
     }
 
@@ -206,11 +210,6 @@ const createEmulator = (opts: { version: string }) => {
     const s = /^\/workers\/scripts\/([^/]+)(\/.*)?$/.exec(rest);
     if (s && s[1] === NAME) {
       const sub = s[2] ?? "";
-      if (sub === "" && m === "GET") {
-        // The real endpoint returns the raw script (multipart/JS), not a JSON envelope.
-        if (!state.script) return fail(404, 10007, "This Worker does not exist on your account.");
-        return new Response("export default { fetch() {} }", { headers: { "content-type": "application/javascript" } });
-      }
       if (sub === "" && m === "PUT") {
         const all = await parseMultipart(req);
         const meta = all.find((p) => p.name === "metadata");
@@ -236,6 +235,15 @@ const createEmulator = (opts: { version: string }) => {
         return ok({ jwt: SESSION_JWT, buckets });
       }
       if (!state.script && sub !== "") return fail(404, 10007, "This Worker does not exist on your account.");
+      if (sub === "/settings" && m === "GET") {
+        // Script and version settings: bindings as uploaded (d1 answers with `id`), plus secrets by name.
+        const uploaded = (state.script!.metadata.bindings ?? []) as Record<string, unknown>[];
+        const bindings = [
+          ...uploaded.map(({ database_id, ...b }) => (database_id ? { ...b, id: database_id } : b)),
+          ...[...state.secrets.keys()].map((name) => ({ type: "secret_text", name })),
+        ];
+        return ok({ bindings, compatibility_date: state.script!.metadata.compatibility_date, logpush: false });
+      }
       if (sub === "/secrets" && m === "GET") {
         return ok([...state.secrets.keys()].map((name) => ({ name, type: "secret_text" })));
       }
@@ -262,6 +270,7 @@ const createEmulator = (opts: { version: string }) => {
 
   const health = (): Response => {
     state.healthCalls++;
+    if (opts.workersDevBlocked) return new Response(BLOCK_PAGE, { headers: { "content-type": "text/html" } });
     if (!state.script || !state.workersDev) return new Response("There is nothing here yet", { status: 404 });
     // A fresh deploy answers 503 for a moment before it serves the new code.
     if (state.healthCalls <= COLD_START_HEALTH_MISSES) return new Response("starting", { status: 503 });
@@ -320,7 +329,7 @@ const fastInstaller: Installer = {
   validateName,
 };
 
-const makeDeps = (emu: ReturnType<typeof createEmulator>) => {
+const makeDeps = (emu: ReturnType<typeof createEmulator>, installer: Installer = fastInstaller) => {
   const out: string[] = [];
   const tokens: string[] = [];
   const io: Io = {
@@ -338,7 +347,7 @@ const makeDeps = (emu: ReturnType<typeof createEmulator>) => {
     },
     bundle: () => loadBundle(bundleDir),
     io,
-    installer: fastInstaller,
+    installer,
     version: "0.0.0-test",
   };
   return { deps, out, tokens };
@@ -367,6 +376,9 @@ describe("e2e: setup then update against emulated Cloudflare", () => {
 
     // Account listing followed pagination during the permission probe.
     expect(state.log.filter((l) => l.path === "/accounts").length).toBe(2);
+    // Permission probes hit the chosen account only (R15).
+    expect(state.log.some((l) => l.method === "GET" && l.path === "/accounts/acc1/workers/scripts")).toBe(true);
+    expect(state.log.some((l) => l.path.startsWith("/accounts/acc2/"))).toBe(false);
 
     // D1: created with the worker's name, schema migrated, ledger recorded.
     const db = state.d1.find((d) => d.name === NAME);
@@ -392,7 +404,12 @@ describe("e2e: setup then update against emulated Cloudflare", () => {
     expect(meta.keep_bindings).toEqual(["secret_text"]);
     expect(meta.assets.jwt).toBe(COMPLETION_JWT);
     expect(meta.assets.config.run_worker_first).toEqual(["/api/*", "/beat/*"]);
-    expect(meta.bindings).toHaveLength(3);
+    expect(meta.bindings).toHaveLength(4);
+    expect(meta.bindings).toContainEqual({
+      type: "plain_text",
+      name: "EDGEBEAT_VERSION",
+      text: bundle.manifest.version,
+    });
     expect(meta.bindings).toContainEqual({ type: "d1", name: "DB", database_id: db!.uuid });
     expect(meta.bindings).toContainEqual({ type: "assets", name: "ASSETS" });
     expect(meta.bindings).toContainEqual({ type: "plain_text", name: "EDGEBEAT_INSTALL_SOURCE", text: "cli" });
@@ -452,5 +469,47 @@ describe("e2e: setup then update against emulated Cloudflare", () => {
     expect(updateOut).toContain(`Edgebeat ${bundle.manifest.version} is ready.`);
     expect(updateOut).not.toContain("Admin password (shown once)");
     expect(updateOut).not.toContain(TOKEN);
+  }, 60_000);
+});
+
+describe("e2e: workers.dev blocked on this network (I1)", () => {
+  const SHORT_POLL = { pollIntervalMs: 5, pollTimeoutMs: 100 };
+  const blockedInstaller: Installer = {
+    ...fastInstaller,
+    install: (api, b, o) => install(api, b, { ...o, ...SHORT_POLL }),
+    update: (api, b, o) => update(api, b, { ...o, ...SHORT_POLL }),
+  };
+
+  test("setup succeeds with a warning, a re-run sees the install, update works", async () => {
+    const emu = createEmulator({ version: bundle.manifest.version, workersDevBlocked: true });
+    const { state } = emu;
+    const warning = `workers.dev isn't reachable from this network — open https://${HEALTH_HOST}/ in a browser or try another network.`;
+
+    const setup = makeDeps(emu, blockedInstaller);
+    const code = await run(["setup", "--yes", "--account", "acc1"], setup.deps);
+    const out = setup.out.join("\n");
+    expect({ code, out }).toEqual({ code: 0, out: expect.any(String) });
+    expect(out).toContain(`Edgebeat ${bundle.manifest.version} is ready.`);
+    expect(out).toContain(`! Installed, but ${warning}`);
+    expect(out).not.toContain("✗");
+    // Generated password printed exactly once, right after the secrets were set.
+    const pw = state.secrets.get("ADMIN_PASSWORD")!;
+    expect(out.split(pw)).toHaveLength(2);
+    expect(state.healthCalls).toBeGreaterThan(0);
+    expect(state.schedules).toEqual(["* * * * *"]);
+
+    // Identity comes from the API: the blocked health endpoint does not make it look foreign.
+    state.log = [];
+    const again = makeDeps(emu, blockedInstaller);
+    expect(await run(["setup", "--yes", "--account", "acc1"], again.deps)).toBe(1);
+    expect(again.out.join("\n")).toContain(`Edgebeat ${bundle.manifest.version} is already installed as "${NAME}"`);
+    expect(state.log.filter((l) => l.method !== "GET" && !l.path.endsWith("/query"))).toEqual([]);
+
+    const upd = makeDeps(emu, blockedInstaller);
+    expect(await run(["update", "--yes", "--account", "acc1"], upd.deps)).toBe(0);
+    expect(upd.out.join("\n")).toContain(`! Updated, but ${warning}`);
+    expect(state.unhandled).toEqual([]);
+    expect(state.authFailures).toEqual([]);
+    expect(strayFetches).toEqual([]);
   }, 60_000);
 });
