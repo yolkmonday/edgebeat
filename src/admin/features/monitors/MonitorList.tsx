@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { useMonitors } from "@/api/use-monitors";
+import { QuickAdd } from "@/features/monitors/QuickAdd";
 import { MonitorTable } from "@/features/monitors/MonitorTable";
 import { MonitorsEmpty } from "@/features/monitors/MonitorsEmpty";
 import { STATE_TABS, countByState, filterMonitors, paginate, type StateFilter } from "@/features/monitors/list-filter";
@@ -109,6 +110,7 @@ export const MonitorList = ({ kind }: MonitorListProps) => {
   return (
     <div className="flex flex-col gap-6">
       {header}
+      {kind === "monitors" ? <QuickAdd /> : null}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="max-w-full overflow-x-auto">
           <Tabs
