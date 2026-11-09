@@ -65,7 +65,7 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
       onSuccess: setCreated,
       onError: (e) =>
         toast.error("Couldn't create the token", {
-          description: isApiError(e) && e.code === "token_limit" ? "You can have up to 20 tokens. Revoke one first." : undefined,
+          description: isApiError(e) && e.code === "too_many_tokens" ? "You can have up to 20 tokens. Revoke one first." : undefined,
         }),
     });
 

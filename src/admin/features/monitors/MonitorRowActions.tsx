@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useDeleteMonitor, useTestCheck, useUpdateMonitor } from "@/api/use-monitors";
 import { isApiError } from "@/lib/api";
+import { budgetExceededMessage } from "@/features/monitors/budget-error";
 import { reportCheck } from "@/features/monitors/check-result";
 
 export type MonitorRowActionsProps = { monitor: Monitor; /** Where to go after a delete started from a detail page. */ afterDelete?: string };
@@ -23,7 +24,7 @@ export const MonitorRowActions = ({ monitor: m, afterDelete }: MonitorRowActions
       { paused: !m.paused },
       {
         onSuccess: () => toast.success(m.paused ? `${m.name} resumed` : `${m.name} paused`),
-        onError: (e) => toast.error("Could not update the monitor", { description: isApiError(e) ? e.code : undefined }),
+        onError: (e) => toast.error("Could not update the monitor", { description: budgetExceededMessage(e) ?? (isApiError(e) ? e.code : undefined) }),
       },
     );
 

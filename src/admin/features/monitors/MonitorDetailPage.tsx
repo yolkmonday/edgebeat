@@ -12,6 +12,7 @@ import { StatePill } from "@/components/shared/StatePill";
 import { useDeleteMonitor, useMonitor, useUpdateMonitor } from "@/api/use-monitors";
 import { isApiError } from "@/lib/api";
 import { stateLabel } from "@/lib/format";
+import { budgetExceededMessage } from "@/features/monitors/budget-error";
 import { CheckPanel } from "@/features/monitors/CheckPanel";
 import { DownExplainer } from "@/features/monitors/DownExplainer";
 import { HeartbeatPanel } from "@/features/monitors/HeartbeatPanel";
@@ -68,7 +69,7 @@ const Detail = ({ id }: { id: string }) => {
       { paused: !m.paused },
       {
         onSuccess: () => toast.success(m.paused ? `${m.name} resumed` : `${m.name} paused`),
-        onError: () => toast.error("Could not update the monitor"),
+        onError: (e) => toast.error("Could not update the monitor", { description: budgetExceededMessage(e) ?? undefined }),
       },
     );
 

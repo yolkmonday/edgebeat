@@ -64,6 +64,8 @@ type WizardState = {
   back: () => void;
   /** "Add another": back to the type step with an empty draft, keeping the chosen type. */
   reset: () => void;
+  /** Entering /setup: a fresh wizard at step 1 (no leftover monitor, check or beat URL). */
+  start: () => void;
 };
 
 const clamp = (n: number): WizardStep => Math.min(4, Math.max(1, n)) as WizardStep;
@@ -81,4 +83,5 @@ export const useWizard = create<WizardState>()((set) => ({
   next: () => set((s) => ({ step: clamp(s.step + 1) })),
   back: () => set((s) => ({ step: clamp(s.step - 1) })),
   reset: () => set({ step: 2, draft: DEFAULT_DRAFT, created: null, check: null }),
+  start: () => set({ step: 1, type: "http", draft: DEFAULT_DRAFT, created: null, check: null }),
 }));

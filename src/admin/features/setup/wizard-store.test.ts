@@ -56,4 +56,18 @@ describe("useWizard", () => {
     expect(s).toMatchObject({ step: 2, type: "tcp", created: null, check: null });
     expect(s.draft).toEqual(DEFAULT_DRAFT);
   });
+
+  test("start returns a finished wizard to a clean step 1", () => {
+    useWizard.setState({
+      step: 4,
+      type: "heartbeat",
+      draft: draft({ name: "x" }),
+      created: { id: "m1" } as never,
+      check: { ok: true, latencyMs: 1, code: null, error: null, at: 1 },
+    });
+    useWizard.getState().start();
+    const s = useWizard.getState();
+    expect(s).toMatchObject({ step: 1, type: "http", created: null, check: null });
+    expect(s.draft).toEqual(DEFAULT_DRAFT);
+  });
 });

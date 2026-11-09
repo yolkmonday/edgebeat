@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { Navigate } from "react-router";
 import { isApiError } from "@/lib/api";
 import { useSession } from "@/api/use-session";
@@ -13,6 +14,9 @@ export default function SetupPage() {
   const session = useSession();
   const step = useWizard((s) => s.step);
   const created = useWizard((s) => s.created);
+  const start = useWizard((s) => s.start);
+  // the store outlives the page: every visit to /setup starts over (before paint, so no stale step 4 flashes)
+  useLayoutEffect(() => start(), [start]);
   const unauthorized = session.isError && isApiError(session.error) && session.error.status === 401;
 
   if (unauthorized) return <Navigate to="/login?next=%2Fsetup" replace />;
