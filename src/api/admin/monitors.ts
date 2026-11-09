@@ -53,7 +53,8 @@ const DEFAULTS = {
   headers: {} as Record<string, string>,
   expectedStatus: "200-399",
   timeoutMs: 10_000,
-  followRedirects: true,
+  // each redirect hop is a subrequest; only keyword checks default to following (see POST)
+  followRedirects: false,
   keywordMode: "contains" as const,
   intervalMin: 1,
   confirmations: 2,
@@ -62,15 +63,35 @@ const DEFAULTS = {
   sort: 0,
 };
 
+// Workers cannot open outbound connections to port 25
+const BLOCKED_TCP_PORTS = new Set([25]);
+
 const need = (ctx: z.RefinementCtx, path: string, message: string) =>
   ctx.addIssue({ code: "custom", path: [path], message });
 
-/** Full-record rules: `type`-specific required fields. */
+const validHeaders = (h: Record<string, string>): boolean => {
+  try {
+    new Headers(h);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Full-record rules: `type`-specific required fields, and configs that could never pass. */
 export const monitorInput = z.object(shape).superRefine((v, ctx) => {
-  if (v.type === "http" && !v.url) need(ctx, "url", "url is required for http monitors");
+  if (v.type === "http") {
+    if (!v.url) need(ctx, "url", "url is required for http monitors");
+    const method = v.method ?? "GET";
+    const bodyless = method === "GET" || method === "HEAD";
+    if (bodyless && v.body != null) need(ctx, "body", `${method} requests cannot have a body`);
+    if (method === "HEAD" && v.keyword != null) need(ctx, "keyword", "HEAD responses have no body to match a keyword");
+    if (v.headers && !validHeaders(v.headers)) need(ctx, "headers", "invalid header name or value");
+  }
   if (v.type === "tcp") {
     if (!v.host) need(ctx, "host", "host is required for tcp monitors");
     if (v.port == null) need(ctx, "port", "port is required for tcp monitors");
+    else if (BLOCKED_TCP_PORTS.has(v.port)) need(ctx, "port", "port 25 is blocked for outbound connections on Workers");
   }
   if (v.type === "heartbeat") {
     if (v.heartbeatPeriodS == null) need(ctx, "heartbeatPeriodS", "heartbeatPeriodS (>= 60) is required");
@@ -175,7 +196,12 @@ monitorsApi.get("/", async (c) => {
 });
 
 monitorsApi.post("/", zValidator("json", monitorInput, onInvalid), async (c) => {
-  const input = { ...DEFAULTS, ...withoutUndefined(c.req.valid("json")) } as Input & typeof DEFAULTS;
+  const valid = c.req.valid("json");
+  const input = {
+    ...DEFAULTS,
+    followRedirects: valid.keyword != null,
+    ...withoutUndefined(valid),
+  } as Input & typeof DEFAULTS;
   const bad = await checkReferences(c, input);
   if (bad) return bad;
 

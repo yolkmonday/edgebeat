@@ -225,7 +225,7 @@ describe("monitors", () => {
     expect(m.headers).toEqual({ "X-A": "1" });
     expect(m.isPublic).toBe(true);
     expect(m.paused).toBe(false);
-    expect(m.followRedirects).toBe(true);
+    expect(m.followRedirects).toBe(false);
     expect(m).not.toHaveProperty("heartbeatToken");
 
     expect((await call(cookie, "POST", "/monitors", httpMonitor())).status).toBe(409);
@@ -250,6 +250,30 @@ describe("monitors", () => {
     expect((await call(cookie, "PATCH", `/monitors/${m.id}`, { type: "http" })).status).toBe(200);
     expect((await call(cookie, "PATCH", "/monitors/nope", { name: "x" })).status).toBe(404);
     expect((await call(cookie, "DELETE", "/monitors/nope")).status).toBe(404);
+  });
+
+  it("followRedirects defaults to false, true when a keyword is set, explicit value wins", async () => {
+    const create = async (extra: Record<string, unknown>) =>
+      ((await (await call(cookie, "POST", "/monitors", httpMonitor(extra))).json()) as { followRedirects: boolean })
+        .followRedirects;
+    expect(await create({ slug: "a" })).toBe(false);
+    expect(await create({ slug: "b", keyword: "ok" })).toBe(true);
+    expect(await create({ slug: "c", keyword: "ok", followRedirects: false })).toBe(false);
+    expect(await create({ slug: "d", followRedirects: true })).toBe(true);
+  });
+
+  it("rejects configs that can never pass", async () => {
+    const status = async (body: Record<string, unknown>) => (await call(cookie, "POST", "/monitors", body)).status;
+    expect(await status(httpMonitor({ body: "x" }))).toBe(400);
+    expect(await status(httpMonitor({ method: "HEAD", body: "x" }))).toBe(400);
+    expect(await status(httpMonitor({ headers: { "bad name": "x" } }))).toBe(400);
+    expect(await status(httpMonitor({ headers: { "X-A": "line\nbreak" } }))).toBe(400);
+    expect(await status(httpMonitor({ method: "HEAD", keyword: "ok" }))).toBe(400);
+    expect(await status({ name: "t", slug: "t", type: "tcp", host: "mail.example.com", port: 25 })).toBe(400);
+    expect(await status(httpMonitor({ method: "POST", body: "x", headers: { "X-A": "1" } }))).toBe(201);
+    // merged record is revalidated: switching an existing keyword monitor to HEAD fails
+    const m = (await (await call(cookie, "POST", "/monitors", httpMonitor({ slug: "k", keyword: "ok" }))).json()) as { id: string };
+    expect((await call(cookie, "PATCH", `/monitors/${m.id}`, { method: "HEAD" })).status).toBe(400);
   });
 
   it("patch slug conflict gives 409", async () => {
