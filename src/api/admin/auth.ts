@@ -1,7 +1,11 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Env } from "@/env";
+import { getDb } from "@/db/client";
+import { apiTokens } from "@/db/schema";
+import { hashToken, looksLikeToken } from "@/lib/api-tokens";
 import { jwtKey } from "@/lib/keys";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 
 const COOKIE = "eb_session";
 const SESSION_S = 12 * 60 * 60;
@@ -16,6 +20,19 @@ const weakPassword = (p: string | undefined): boolean =>
   p === undefined || p === PLACEHOLDER_PASSWORD || p.length < MIN_PASSWORD_LENGTH;
 
 type AppEnv = { Bindings: Env };
+
+export type AuthInfo = { kind: "cookie" | "token"; scope: "admin" | "read"; tokenId?: string };
+
+declare module "hono" {
+  interface ContextVariableMap {
+    auth: AuthInfo;
+  }
+}
+
+const LAST_USED_THROTTLE_MS = 10 * 60_000;
+const BEARER_RE = /^Bearer\s+(\S+)$/i;
+const READ_METHODS = new Set(["GET", "HEAD"]);
+const TOKENS_PATH = /^\/api\/admin\/tokens(\/|$)/;
 
 const enc = new TextEncoder();
 
@@ -102,8 +119,57 @@ type TimingSafe = { timingSafeEqual: (a: ArrayBuffer, b: ArrayBuffer) => boolean
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+type TokenRow = { id: string; scope: "read" | "admin"; tokenHash: string };
+
+/** Looks a bearer token up by its hash; the stored hash is compared in constant time as well. */
+const findToken = async (env: Env, token: string): Promise<TokenRow | null> => {
+  if (!looksLikeToken(token)) return null;
+  const hash = await hashToken(token);
+  const [row] = await getDb(env)
+    .select({ id: apiTokens.id, scope: apiTokens.scope, tokenHash: apiTokens.tokenHash })
+    .from(apiTokens)
+    .where(eq(apiTokens.tokenHash, hash))
+    .limit(1);
+  if (!row) return null;
+  const same = (crypto.subtle as unknown as TimingSafe).timingSafeEqual(enc.encode(row.tokenHash).buffer, enc.encode(hash).buffer);
+  return same ? row : null;
+};
+
+const touchToken = (c: Parameters<MiddlewareHandler<AppEnv>>[0], id: string, now: number): void => {
+  const write = getDb(c.env)
+    .update(apiTokens)
+    .set({ lastUsedAt: now })
+    .where(and(eq(apiTokens.id, id), or(isNull(apiTokens.lastUsedAt), lt(apiTokens.lastUsedAt, now - LAST_USED_THROTTLE_MS))))
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+  try {
+    c.executionCtx.waitUntil(write);
+  } catch {
+    // no execution context (unit-style invocation): the write still runs, just unobserved
+  }
+};
+
 export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (c.req.path === "/api/admin/login") return next();
+
+  const authorization = c.req.header("authorization");
+  if (authorization !== undefined) {
+    // a Bearer header wins over the cookie: malformed or unknown tokens never fall back to the session
+    const match = BEARER_RE.exec(authorization);
+    const row = match ? await findToken(c.env, match[1]!) : null;
+    if (!row) return c.json({ error: "unauthorized" }, 401);
+    if (TOKENS_PATH.test(c.req.path)) return c.json({ error: "session_required" }, 403);
+    if (row.scope === "read" && !READ_METHODS.has(c.req.method)) {
+      return c.json({ error: "insufficient_scope" }, 403);
+    }
+    // Bearer is exempt from the Origin check: it is never attached ambiently by a browser
+    c.set("auth", { kind: "token", scope: row.scope, tokenId: row.id });
+    touchToken(c, row.id, Date.now());
+    return next();
+  }
+
   const token = getCookie(c, COOKIE);
   if (!token || !(await verifySession(c.env, token, Math.floor(Date.now() / 1000)))) {
     return c.json({ error: "unauthorized" }, 401);
@@ -114,6 +180,7 @@ export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
       return c.json({ error: "forbidden_origin" }, 403);
     }
   }
+  c.set("auth", { kind: "cookie", scope: "admin" });
   return next();
 };
 

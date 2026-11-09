@@ -103,3 +103,13 @@ export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+export const apiTokens = sqliteTable("api_tokens", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  scope: text("scope").$type<"read" | "admin">().notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  prefix: text("prefix").notNull(),
+  createdAt: integer("created_at").notNull(),
+  lastUsedAt: integer("last_used_at"),
+});
