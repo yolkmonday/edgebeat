@@ -1,5 +1,7 @@
 # Edgebeat Plan 3 — Admin SPA, First-Run Wizard, API Tokens, Import/Export
 
+**Status:** done (2026-11-09). Tasks 0–7 merged on `feat/admin-plan-3`; browser-verified in Task 7 (light, dark, 390 px). Built-screen screenshots were kept outside the repo. Open: the public status page still uses its own slate tokens (decision 11, Plan 4).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A signed-in owner manages everything from `/admin` in the browser: first-run wizard to the first monitor, overview with tick health and free-plan usage, monitors and heartbeats (list, create, edit, detail, pause, rotate token, test check), groups, status-page visibility and order, settings (plan, check budget, appearance, API tokens, JSON import/export). No curl needed.

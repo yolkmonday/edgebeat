@@ -403,6 +403,33 @@ Kept outside the public repo.
   unknown; else operational. A grey row never sits under a green banner. The
   status page also ages the status it holds and shows it stale/unknown once
   the last tick is over 180 s old, even when refreshes fail. (§8)
+- **Check budget guard** (Plan 3): a monitor create, edit, resume or import
+  that would raise the busiest minute (`peakChecksPerMinute`, exact from slot
+  hashing) above the effective budget (free 40, paid `checkBudget ?? 500`)
+  and above the current peak is refused `409 budget_exceeded`. Saves that do
+  not raise the peak always pass, so an install already over budget can still
+  be edited. The settings design says such monitors "can't be saved". (§6.1)
+- **Usage numbers** (Plan 3): D1 writes and Worker requests today come from
+  the Cloudflare GraphQL Analytics API only when the optional `CF_ACCOUNT_ID`
+  + `CF_API_TOKEN` (Account Analytics: Read) secrets are set (cached 300 s).
+  Otherwise D1 writes are an estimate of Edgebeat's own writes (ticks today
+  are derived from the last tick, not counted) and requests are "Not
+  tracked". The overview says whether analytics is ok, failed or off. No
+  per-request counter: it would spend the write budget it reports. (§6.5)
+- **`snapshot.current` carries `code` and `error`** (Plan 3) so the admin can
+  show the HTTP code and error class of the latest check. (§5)
+- **Admin serving** (Plan 3): `/admin` and `/admin/*` run the Worker first
+  (`run_worker_first`); real files pass through `ASSETS`, every other path
+  gets the SPA `index.html` with CSP and security headers, missing
+  `/admin/assets/*` return 404. (§9)
+- **Test check** (Plan 3): `POST /api/admin/monitors/:id/check` runs one check
+  now for the wizard's done screen and the "Run check now" button. Admin
+  only, rate limited, writes nothing; the tick stays the only source of state.
+- **API tokens** (Plan 3): `eb_` + 32 random bytes, stored as SHA-256 hash and
+  a display prefix, plaintext returned once, max 20. Bearer requests skip the
+  Origin check (never sent ambiently); `read` tokens may only `GET`/`HEAD`;
+  token management refuses Bearer (`403 session_required`). `lastUsedAt` is
+  written at most once per 10 min per token.
 
 ## 15. Left to the builder
 

@@ -4,7 +4,7 @@ Open-source uptime monitor and public status page that runs as a single Cloudfla
 
 ## Status
 
-Plan 1 (core engine) only. Working: HTTP, TCP and heartbeat monitors, state transitions, 90-day daily stats, public status JSON, admin REST API, static status page. Not yet built: admin UI, alert channels, incidents, maintenance windows.
+Plans 1 and 3. Working: HTTP, TCP and heartbeat monitors, state transitions, 90-day daily stats, public status JSON, static status page, the admin UI at `/admin` (first-run wizard, monitors, heartbeats, groups, status page, settings, API tokens, import/export) and the admin REST API. Not yet built: alert channels, incidents, maintenance windows.
 
 The number of monitors the free Workers plan can handle per tick is a target, not a measurement. It is pending a real benchmark on a free account.
 
@@ -56,6 +56,8 @@ bun run deploy                            # builds the page, deploys, then appli
 
 `bun run deploy` deploys before migrating because the first deploy is what creates the D1 database. For the few seconds until the migrations finish, the Worker runs without its tables: cron ticks and status requests fail harmlessly and recover on their own.
 
+Then open `https://<your-worker>/admin` to add your first monitor (see [Admin](#admin)).
+
 ## Local development
 
 Create `.dev.vars` (git-ignored):
@@ -67,46 +69,57 @@ ENCRYPTION_KEY=<openssl rand -base64 32>
 
 ```sh
 bunx wrangler d1 migrations apply DB --local
-bun run dev                                   # http://localhost:8787, cron testable
+bun run dev                                   # http://localhost:8787 (admin: /admin), cron testable
 curl "http://localhost:8787/cdn-cgi/handler/scheduled"   # run one tick
 bun run test                                  # builds the page, then bun test + vitest
 bun run typecheck
 ```
 
-## Admin API
+## Admin
 
-All admin routes live under `/api/admin`. Log in once and keep the session cookie (`eb_session`). Non-GET requests must send an `Origin` header equal to the worker origin.
+Open `https://<your-worker>/admin` and sign in with `ADMIN_PASSWORD`. With no monitors yet, a first-run wizard adds the first website, server port or cron job and runs a test check on the spot. Everything else lives in the admin: monitors and heartbeats (create, edit, pause, test check, rotate the beat URL), groups, what the status page shows and in which order, the Cloudflare plan and check budget, appearance (system, light, dark), API tokens and backups.
 
-```sh
-HOST=https://edgebeat.example.workers.dev
-curl -c jar -H "Origin: $HOST" -H 'content-type: application/json' \
-  -d '{"password":"<ADMIN_PASSWORD>"}' $HOST/api/admin/login
-```
+- **Password.** At least 12 characters and not `change-me`. To change or reset it, set a new `ADMIN_PASSWORD` secret (`bunx wrangler secret put ADMIN_PASSWORD`, or the Cloudflare dashboard) and sign in again. Sessions last 12 hours.
+- **Protect it.** The admin is a single password behind a rate-limited login. For anything public, put [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) in front of `/admin*` and `/api/admin/*`.
+- **Check budget.** A save that would raise the busiest minute above the budget (free plan: 40 checks per minute) is refused with `409 budget_exceeded`. Edits that don't raise it always save.
+- **Usage numbers.** The overview shows checks per minute, D1 writes and Worker requests today. Without extra secrets, D1 writes are an estimate of Edgebeat's own writes and requests are not tracked. For real, account-wide numbers add two optional secrets: `CF_ACCOUNT_ID` and `CF_API_TOKEN` (a token with **Account Analytics: Read**). If the query fails, the overview says so and falls back to the estimate.
 
-Create monitors (`intervalMin` is one of 1, 2, 3, 5, 10, 15, 30, 60). HTTP monitors do not follow redirects unless `followRedirects` is `true`; it defaults to `true` only when a `keyword` is set. Followed redirects are capped at 5 hops, and each hop counts as a subrequest.
+### API tokens
 
-```sh
-# http
-curl -b jar -H "Origin: $HOST" -H 'content-type: application/json' $HOST/api/admin/monitors \
-  -d '{"name":"Website","slug":"website","type":"http","url":"https://example.com","intervalMin":1,"expectedStatus":"200-399"}'
-
-# tcp
-curl -b jar -H "Origin: $HOST" -H 'content-type: application/json' $HOST/api/admin/monitors \
-  -d '{"name":"DNS","slug":"dns","type":"tcp","host":"1.1.1.1","port":443}'
-
-# heartbeat (response includes beatUrl)
-curl -b jar -H "Origin: $HOST" -H 'content-type: application/json' $HOST/api/admin/monitors \
-  -d '{"name":"Nightly backup","slug":"backup","type":"heartbeat","heartbeatPeriodS":86400,"heartbeatGraceS":900}'
-```
-
-List monitors and read or change settings (`siteName`, `plan`: `free` or `paid`, `checkBudget`):
+Create tokens in Settings → API tokens. A token is shown once; Edgebeat stores only its hash. Send it as a header:
 
 ```sh
-curl -b jar $HOST/api/admin/monitors
-curl -b jar $HOST/api/admin/settings
-curl -b jar -X PATCH -H "Origin: $HOST" -H 'content-type: application/json' \
-  -d '{"siteName":"Acme Status","plan":"free"}' $HOST/api/admin/settings
+curl -H "Authorization: Bearer eb_..." https://<host>/api/admin/monitors
 ```
+
+A `read` token may only `GET`; an `admin` token may change anything except tokens themselves (token management needs a signed-in browser session). Bearer requests skip the Origin check.
+
+### Import and export
+
+Settings → Backup exports monitors, groups and settings as JSON. The file has no ids, beat URLs, tokens or history, so it is safe to keep in git. Importing merges by slug: it creates and updates, and deletes nothing unless you tick "Delete monitors and groups that are not in the file". The admin always shows a dry-run summary first. Over the API:
+
+```sh
+curl -H "Authorization: Bearer eb_..." https://<host>/api/admin/export > edgebeat.json
+curl -H "Authorization: Bearer eb_..." -H 'content-type: application/json' \
+  --data @edgebeat.json "https://<host>/api/admin/import?dryRun=true"   # summary, no writes
+# add ?prune=true to delete what the file doesn't list; one import is all-or-nothing
+```
+
+### Admin API
+
+Everything under `/api/admin` takes either a Bearer token or the `eb_session` cookie from `POST /api/admin/login` (`{"password": "..."}`). Cookie requests that change data must send an `Origin` header equal to the Worker origin.
+
+| Route | Methods |
+|---|---|
+| `/api/admin/session`, `/overview`, `/events` | `GET` |
+| `/api/admin/monitors`, `/monitors/:id` | `GET`, `POST`, `PATCH`, `DELETE` |
+| `/api/admin/monitors/:id/check` (test check, writes nothing), `/monitors/:id/rotate-token` | `POST` |
+| `/api/admin/groups`, `/groups/:id` | `GET`, `POST`, `PATCH`, `DELETE` |
+| `/api/admin/settings` (`siteName`, `plan`: `free` or `paid`, `checkBudget`) | `GET`, `PATCH` |
+| `/api/admin/tokens`, `/tokens/:id` (session only) | `GET`, `POST`, `DELETE` |
+| `/api/admin/export`, `/api/admin/import` | `GET`, `POST` |
+
+`intervalMin` is one of 1, 2, 3, 5, 10, 15, 30, 60. HTTP monitors follow redirects only when `followRedirects` is `true`, which is the default only when a `keyword` is set; at most 5 hops, each counting as a subrequest.
 
 ## Heartbeats
 
