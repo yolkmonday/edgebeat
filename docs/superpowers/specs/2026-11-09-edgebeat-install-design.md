@@ -1,7 +1,7 @@
 # Edgebeat — Install Design
 
 Date: 2026-11-09
-Status: approved by owner 2026-11-09
+Status: approved by owner 2026-11-09; implemented by Plan A on `feat/install-plan-a` (CLI, installer core, release bundle, button prep), pending owner verification on a real account
 Builds on: `2026-11-09-edgebeat-design.md` (Plan 1 merged to `main` at `fa2fb60`).
 
 Marked **[owner]** = decided by the owner in conversation. Marked **[call]** =
