@@ -11,12 +11,14 @@ type UsageCardProps = {
   meter?: { value: number; max: number | null; tone?: MeterTone };
   note: ReactNode;
   bad?: boolean;
+  /** false for a word ("Not tracked") instead of a number: no big mono digits. */
+  numeric?: boolean;
 };
 
-const UsageCard = ({ label, value, limit, meter, note, bad }: UsageCardProps) => (
+const UsageCard = ({ label, value, limit, meter, note, bad, numeric = true }: UsageCardProps) => (
   <article className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-5 shadow-[0_1px_2px_var(--shadow)] dark:shadow-[0_0_0_1px_var(--dark-ring)]">
     <h3 className="text-sm text-muted">{label}</h3>
-    <p className="font-mono text-3xl tabular-nums text-text">
+    <p className={cn("tabular-nums text-text", numeric ? "font-mono text-3xl" : "text-base font-medium leading-9")}>
       {value}
       {limit ? <span className="ml-2 text-sm text-muted">/ {limit}</span> : null}
     </p>
@@ -25,8 +27,20 @@ const UsageCard = ({ label, value, limit, meter, note, bad }: UsageCardProps) =>
   </article>
 );
 
+/** Where the D1 number comes from, said plainly: real analytics, a fallback after a failed query, or our own estimate. */
+const d1SourceNote = (analytics: Overview["usage"]["analytics"], source: Overview["usage"]["d1WritesToday"]["source"]) => {
+  if (source === "analytics") return " From Cloudflare analytics (whole account).";
+  if (analytics === "failed") return " Estimated: the Cloudflare analytics query failed.";
+  return " Estimated from Edgebeat's own writes.";
+};
+
+const requestsMissingNote = (analytics: Overview["usage"]["analytics"]) =>
+  analytics === "failed"
+    ? "The Cloudflare analytics query failed. Check that CF_API_TOKEN has Account Analytics: Read and CF_ACCOUNT_ID is right."
+    : "Add CF_ACCOUNT_ID and CF_API_TOKEN (Account Analytics: Read) secrets to see this.";
+
 export const UsageCards = ({ usage }: { usage: Overview["usage"] }) => {
-  const { checksPerMinute: cpm, d1WritesToday: d1, requestsToday: req } = usage;
+  const { checksPerMinute: cpm, d1WritesToday: d1, requestsToday: req, analytics } = usage;
   const over = cpm.used > cpm.budget;
   const left = Math.max(0, cpm.budget - cpm.used);
   return (
@@ -57,7 +71,8 @@ export const UsageCards = ({ usage }: { usage: Overview["usage"] }) => {
           value={compact(d1.value)}
           limit={d1.limit === null ? null : compact(d1.limit)}
           meter={{ value: d1.value, max: d1.limit, tone: "neutral" }}
-          note={`On pace for about ${compact(d1.projected)} by midnight.${d1.source === "estimate" ? " (estimated)" : ""}`}
+          note={`On pace for about ${compact(d1.projected)} by midnight.${d1SourceNote(analytics, d1.source)}`}
+          bad={analytics === "failed"}
         />
         {req ? (
           <UsageCard
@@ -70,8 +85,10 @@ export const UsageCards = ({ usage }: { usage: Overview["usage"] }) => {
         ) : (
           <UsageCard
             label="Worker requests today"
-            value="Not tracked"
-            note="Add CF_ACCOUNT_ID and CF_API_TOKEN (Account Analytics: Read) secrets to see this."
+            numeric={false}
+            value={analytics === "failed" ? "Unavailable" : "Not tracked"}
+            note={requestsMissingNote(analytics)}
+            bad={analytics === "failed"}
           />
         )}
       </div>
