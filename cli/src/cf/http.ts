@@ -1,0 +1,89 @@
+import { makeInstallError, type InstallErrorCode } from "../contracts";
+
+export type FetchLike = (input: URL | RequestInfo, init?: RequestInit) => Promise<Response>;
+export type HttpClient = {
+  json: <T>(method: string, path: string, body?: unknown) => Promise<T>;
+  form: <T>(method: string, path: string, form: FormData) => Promise<T>;
+  raw: (method: string, path: string, init: { token?: string; body?: BodyInit }) => Promise<Response>;
+  parse: <T>(res: Response, method: string, path: string) => Promise<T>;
+};
+
+type CfError = { code?: number; message?: string };
+type Envelope<T> = { success?: boolean; errors?: CfError[]; result?: T };
+
+export type CfFailure = { status: number; errors: CfError[]; path: string; method: string };
+
+const permissionFor = (path: string): string => {
+  if (path.includes("/d1/")) return "Account · D1 · Edit";
+  if (path.includes("/workers/")) return "Account · Workers Scripts · Edit";
+  return "Account · Account Settings · Read";
+};
+
+export const mapFailure = (f: CfFailure): Error & { code: InstallErrorCode } => {
+  const message = f.errors.map((e) => e.message ?? "").filter(Boolean).join("; ") || `HTTP ${f.status}`;
+  const codes = f.errors.map((e) => e.code);
+  const isD1 = f.path.includes("/d1/");
+  const isSchedules = f.path.endsWith("/schedules");
+  const limitWords = /limit|maximum|quota|exceed|too many/i;
+  if (f.status === 403 || codes.includes(10000)) {
+    return makeInstallError(
+      "missing_permission",
+      `The API token is missing a permission: ${permissionFor(f.path)}. Edit the token and add it.`,
+    );
+  }
+  if (isD1 && f.method === "POST" && limitWords.test(message)) {
+    return makeInstallError("limit_d1", `D1 database limit reached on this account: ${message}`);
+  }
+  if (isSchedules && /cron|trigger|schedule/i.test(message) && limitWords.test(message)) {
+    return makeInstallError("limit_cron", `Cron trigger limit reached on this account: ${message}`);
+  }
+  return makeInstallError("api_error", `Cloudflare API error (${f.status}): ${message}`);
+};
+
+export const isNotFound = (e: unknown): boolean => (e as { status?: number } | null)?.status === 404;
+
+export const createHttp = (token: string, baseUrl: string, fetchImpl: FetchLike): HttpClient => {
+  const safe = (s: string): string => (token ? s.split(token).join("[redacted]") : s);
+
+  const send = async (method: string, path: string, init: RequestInit): Promise<Response> => {
+    try {
+      return await fetchImpl(`${baseUrl}${path}`, { ...init, method });
+    } catch (e) {
+      throw makeInstallError(
+        "api_error",
+        safe(`Network error calling Cloudflare: ${e instanceof Error ? e.message : String(e)}`),
+      );
+    }
+  };
+
+  const parse = async <T>(res: Response, method: string, path: string): Promise<T> => {
+    const text = await res.text();
+    let env: Envelope<T> | null = null;
+    try {
+      env = JSON.parse(text) as Envelope<T>;
+    } catch {
+      env = null;
+    }
+    if (!res.ok || !env || env.success === false) {
+      const err = mapFailure({ status: res.status, errors: env?.errors ?? [], path, method });
+      err.message = safe(err.message);
+      throw Object.assign(err, { status: res.status });
+    }
+    return env.result as T;
+  };
+
+  const auth = { Authorization: `Bearer ${token}` };
+  return {
+    json: async (method, path, body) => {
+      const res = await send(method, path, {
+        headers: { ...auth, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      return parse(res, method, path);
+    },
+    form: async (method, path, form) => parse(await send(method, path, { headers: auth, body: form }), method, path),
+    raw: (method, path, init) =>
+      send(method, path, { headers: { Authorization: `Bearer ${init.token ?? token}` }, body: init.body }),
+    parse,
+  };
+};
