@@ -9,7 +9,7 @@
   "files": ["dist", "bundle"],
   "engines": { "node": ">=20" },
   "scripts": {
-    "test": "bun test",
+    "test": "bun test ./src ./test",
     "build": "bun build src/bin.ts src/installer/index.ts --target node --outdir dist",
     "bundle": "bun src/bundle/build.ts",
     "prepublishOnly": "bun run bundle && bun run build"
