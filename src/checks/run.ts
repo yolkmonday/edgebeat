@@ -1,5 +1,5 @@
 import type { CheckResult } from "@/core/types";
-import { runHttpCheck, type HttpMonitor } from "@/checks/http";
+import { runHttpCheck, type HttpMonitor, type TakeSubrequest } from "@/checks/http";
 import { runTcpCheck, type TcpMonitor } from "@/checks/tcp";
 
 const DEFAULT_TCP_TIMEOUT_MS = 10_000;
@@ -13,10 +13,15 @@ type RunOptions = {
   retryBudget: number;
   deadlineAt: number;
   now: () => number;
+  /** Per-tick cap on outbound subrequests: initial fetches, retries, every redirect hop, TCP connects. */
+  subrequestBudget: number;
 };
 
-const runOne = (m: RunnableMonitor, timeoutMs: number): Promise<CheckResult> =>
-  m.type === "http" ? runHttpCheck(m, timeoutMs) : runTcpCheck(m, timeoutMs);
+/** Null: the check could not get a subrequest and was not run. */
+const runOne = (m: RunnableMonitor, timeoutMs: number, take: TakeSubrequest): Promise<CheckResult | null> => {
+  if (m.type === "http") return runHttpCheck(m, timeoutMs, take);
+  return take() ? runTcpCheck(m, timeoutMs) : Promise.resolve(null);
+};
 
 export const runChecks = async (
   ms: RunnableMonitor[],
@@ -25,6 +30,12 @@ export const runChecks = async (
   const slots: (CheckResult | undefined)[] = new Array(ms.length).fill(undefined);
   let next = 0;
   let budget = o.retryBudget;
+  let subrequests = o.subrequestBudget;
+  const take: TakeSubrequest = () => {
+    if (subrequests <= 0) return false;
+    subrequests--;
+    return true;
+  };
 
   const timeoutFor = (m: RunnableMonitor): number =>
     Math.max(1, Math.min(m.timeoutMs ?? DEFAULT_TCP_TIMEOUT_MS, o.deadlineAt - o.now()));
@@ -33,10 +44,13 @@ export const runChecks = async (
     while (next < ms.length && o.now() < o.deadlineAt) {
       const i = next++;
       const m = ms[i]!;
-      let result = await runOne(m, timeoutFor(m));
+      const first = await runOne(m, timeoutFor(m), take);
+      if (!first) continue; // not run: carried by the caller
+      let result = first;
       if (!result.ok && budget > 0 && o.now() < o.deadlineAt) {
         budget--;
-        result = await runOne(m, timeoutFor(m));
+        // a retry that cannot get a subrequest keeps the first result
+        result = (await runOne(m, timeoutFor(m), take)) ?? first;
       }
       slots[i] = result;
     }

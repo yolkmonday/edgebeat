@@ -156,6 +156,22 @@ describe("runTick", () => {
     expect(calls[1]!.slice(0, 5)).toEqual(carried);
   });
 
+  it("passes the plan's subrequest cap and clamps a free override to 40", async () => {
+    const ids = Array.from({ length: 45 }, (_, i) => `m${String(i).padStart(2, "0")}`);
+    const [first, ...rest] = ids.map((id) => db.insert(t.monitors).values(httpMonitor(id)));
+    await db.batch([first!, ...rest]);
+    const caps: number[] = [];
+    const fn: typeof runChecks = async (ms, o) => {
+      caps.push(o.subrequestBudget);
+      return { results: ms.map((m) => ({ monitorId: m.id, ...ok() })), notStarted: [] };
+    };
+    await db.insert(t.settings).values({ key: "checkBudget", value: "200" });
+    expect(await runTick(env, at(DAY0 + 1), { runChecks: fn })).toMatchObject({ checked: 40, carried: 5 });
+    await db.insert(t.settings).values({ key: "plan", value: JSON.stringify("paid") });
+    expect(await runTick(env, at(DAY0 + 2), { runChecks: fn })).toMatchObject({ checked: 45, carried: 0 });
+    expect(caps).toEqual([44, 1000]);
+  });
+
   it("reports a late heartbeat as heartbeat_late", async () => {
     const now = at(DAY0 + 1);
     await db.insert(t.monitors).values({

@@ -14,6 +14,8 @@ const LOCK_MS = 55_000;
 const DEADLINE_MS = 50_000;
 const CONCURRENCY = 6;
 const RETRY_BUDGET = 4;
+// free: 40 checks + 4 retries (6 of the 50 stay reserved for alerts); paid limit is far higher
+const SUBREQUEST_BUDGET = { free: 44, paid: 1000 } as const;
 const TICK_RETENTION_MIN = 7 * 1440;
 const STATS_RETENTION_DAYS = 400;
 const STATE_PARAMS = 4; // monitorId, state, consecutiveFailures, lastChangeAt
@@ -66,12 +68,13 @@ const readState = (db: Db) =>
   db.batch([
     db.select().from(monitors),
     db.select().from(monitorState),
-    db.select().from(snapshot).where(eq(snapshot.id, 1)),
+    // never the ~250 KB bars column: the tick only needs current and carry
+    db.select({ current: snapshot.current, carry: snapshot.carry }).from(snapshot).where(eq(snapshot.id, 1)),
     db.select().from(settings).where(inArray(settings.key, ["plan", "checkBudget"])),
     db.select().from(heartbeats),
   ]);
 
-const budgetFrom = (rows: { key: string; value: string }[]): number => {
+const budgetFrom = (rows: { key: string; value: string }[]): { checks: number; subrequests: number } => {
   const value = (key: string): unknown => {
     const row = rows.find((r) => r.key === key);
     return row ? parseJson<unknown>(row.value, row.value, () => true) : undefined;
@@ -79,7 +82,7 @@ const budgetFrom = (rows: { key: string; value: string }[]): number => {
   const plan = value("plan") === "paid" ? "paid" : "free";
   const override = value("checkBudget");
   const valid = typeof override === "number" && Number.isInteger(override) && override > 0;
-  return checkBudget(plan, valid ? override : undefined);
+  return { checks: checkBudget(plan, valid ? override : undefined), subrequests: SUBREQUEST_BUDGET[plan] };
 };
 
 const toRunnable = (m: MonitorRow): RunnableMonitor | null => {
@@ -204,7 +207,8 @@ export const runTick = async (env: Env, now: number, deps: Deps = {}): Promise<T
   const byId = new Map(monitorRows.map((m) => [m.id, m]));
 
   const prevCarry = parseJson<string[]>(snap?.carry ?? "[]", [], Array.isArray);
-  const selected = selectChecks(active, prevCarry, epochMinute, budgetFrom(settingRows));
+  const budget = budgetFrom(settingRows);
+  const selected = selectChecks(active, prevCarry, epochMinute, budget.checks);
   const runnable = selected.run.map((id) => toRunnable(byId.get(id)!)).filter((m) => m !== null);
   const run = deps.runChecks ?? defaultRunChecks;
   const checks = await run(runnable, {
@@ -212,6 +216,7 @@ export const runTick = async (env: Env, now: number, deps: Deps = {}): Promise<T
     retryBudget: RETRY_BUDGET,
     deadlineAt: now + DEADLINE_MS,
     now: Date.now,
+    subrequestBudget: budget.subrequests,
   });
 
   const beats = new Map(heartbeatRows.map((h) => [h.monitorId, h]));

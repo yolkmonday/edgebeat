@@ -24,7 +24,7 @@ describe("runHttpCheck", () => {
     stubFetch(async () => new Response("hello world"));
     const r = await runHttpCheck({ ...base, keyword: "world" }, 2000);
     expect(r).toMatchObject({ monitorId: "m1", ok: true, code: 200, error: null });
-    expect(Number.isInteger(r.latencyMs)).toBe(true);
+    expect(Number.isInteger(r!.latencyMs)).toBe(true);
   });
 
   it("sends user agent and redirect mode", async () => {
@@ -131,5 +131,90 @@ describe("runHttpCheck", () => {
     });
     const r = await runHttpCheck(base, 2000);
     expect(r).toMatchObject({ ok: false, error: "connect", code: null });
+  });
+});
+
+describe("runHttpCheck redirects and subrequests", () => {
+  const redirect = (status: number, location: string) => new Response(null, { status, headers: { location } });
+  const counter = (limit = Infinity) => {
+    const c = { taken: 0, take: () => (c.taken < limit ? (c.taken++, true) : false) };
+    return c;
+  };
+
+  it("follows a relative redirect manually and takes one subrequest per hop", async () => {
+    const spy = vi.fn(async (u: RequestInfo | URL, _init?: RequestInit) =>
+      String(u) === "https://example.com/a/b" ? redirect(302, "../next") : new Response("done"),
+    );
+    vi.stubGlobal("fetch", spy);
+    const c = counter();
+    const r = await runHttpCheck({ ...base, url: "https://example.com/a/b" }, 2000, c.take);
+    expect(r).toMatchObject({ ok: true, code: 200 });
+    expect(spy.mock.calls.map(([u]) => String(u))).toEqual(["https://example.com/a/b", "https://example.com/next"]);
+    expect(spy.mock.calls.every(([, init]) => init?.redirect === "manual")).toBe(true);
+    expect(c.taken).toBe(2);
+  });
+
+  it("does not follow when followRedirects is false", async () => {
+    const spy = vi.fn(async () => redirect(302, "/next"));
+    vi.stubGlobal("fetch", spy);
+    const r = await runHttpCheck({ ...base, followRedirects: false }, 2000);
+    expect(r).toMatchObject({ ok: false, error: "status", code: 302 });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a redirect to a private literal fails as other", async () => {
+    const spy = vi.fn(async () => redirect(301, "http://127.0.0.1/admin"));
+    vi.stubGlobal("fetch", spy);
+    const r = await runHttpCheck(base, 2000);
+    expect(r).toMatchObject({ ok: false, error: "other" });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("more than 5 redirects fails as other", async () => {
+    const spy = vi.fn(async () => redirect(302, "/loop"));
+    vi.stubGlobal("fetch", spy);
+    const r = await runHttpCheck(base, 2000);
+    expect(r).toMatchObject({ ok: false, error: "other" });
+    expect(spy).toHaveBeenCalledTimes(6);
+  });
+
+  it("303 switches to GET without a body; 307 keeps method and body", async () => {
+    const spy = vi.fn(async (u: RequestInfo | URL, _init?: RequestInit) => {
+      const path = new URL(String(u)).pathname;
+      if (path === "/") return redirect(303, "/see");
+      if (path === "/see") return redirect(307, "/temp");
+      return new Response("ok");
+    });
+    vi.stubGlobal("fetch", spy);
+    await runHttpCheck({ ...base, method: "POST", body: "x" }, 2000);
+    expect(spy.mock.calls.map(([, init]) => [init?.method, init?.body])).toEqual([
+      ["POST", "x"],
+      ["GET", null],
+      ["GET", null],
+    ]);
+  });
+
+  it("is not run (null) when no subrequest is available, also mid-chain", async () => {
+    const spy = vi.fn(async () => redirect(302, "/next"));
+    vi.stubGlobal("fetch", spy);
+    expect(await runHttpCheck(base, 2000, () => false)).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+    expect(await runHttpCheck(base, 2000, counter(1).take)).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a thrown 'Too many subrequests' error means not run", async () => {
+    stubFetch(async () => {
+      throw new Error("Too many subrequests.");
+    });
+    expect(await runHttpCheck(base, 2000)).toBeNull();
+  });
+
+  it("invalid header or GET with body fails as other without fetching", async () => {
+    const spy = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", spy);
+    expect(await runHttpCheck({ ...base, headers: { "bad name": "x" } }, 2000)).toMatchObject({ ok: false, error: "other" });
+    expect(await runHttpCheck({ ...base, method: "GET", body: "x" }, 2000)).toMatchObject({ ok: false, error: "other" });
+    expect(spy).not.toHaveBeenCalled();
   });
 });
