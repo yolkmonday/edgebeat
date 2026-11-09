@@ -363,7 +363,7 @@ Channel secrets are stored encrypted in D1 (AES-GCM, key from the
 ## 12. Repo and project
 
 - Location: `~/Dev/edgebeat` [owner]. Single package.
-- GitHub org: `edgebeat-dev` (`edgebeat` user name is taken) [owner].
+- GitHub: `yolkmonday/edgebeat` (public) [owner, 2026-11-09]; org `edgebeat-dev` may come later.
 - Docs site / domain: `edgebeat.sh` [owner]. `.com/.dev/.io/.app` are
   registered by someone else (all at IONOS, possible future name conflict).
 - License: MIT [owner].
@@ -372,19 +372,9 @@ Channel secrets are stored encrypted in D1 (AES-GCM, key from the
 
 ---
 
-## 13. Kirimi rollout (dogfood, not part of the OSS repo)
+## 13. Dogfood rollout
 
-1. Deploy Edgebeat to Kirimi's Cloudflare account.
-2. Monitors: landing, dashboard, API health, webhook, each engine
-   `go.kirimi.id/svN` health; heartbeats for `kirimi-v2-workers` and the
-   107 backup / ClickHouse sync crons.
-3. Alerts to the Kirimi Telegram.
-4. Run in parallel with Better Stack for one week, compare, then move the
-   `status.kirimi.id` DNS and cancel Better Stack.
-
-Exact endpoint list is decided during rollout, not in this design.
-
----
+Kept outside the public repo.
 
 ## 14. Amendments from planning (2026-11-09)
 

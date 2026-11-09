@@ -1,6 +1,6 @@
 # edgebeat
 
-Install and update [Edgebeat](https://github.com/edgebeat-dev/edgebeat), an open-source uptime monitor that runs on one Cloudflare Worker.
+Install and update [Edgebeat](https://github.com/yolkmonday/edgebeat), an open-source uptime monitor that runs on one Cloudflare Worker.
 
 > Coming soon — not yet published to npm.
 

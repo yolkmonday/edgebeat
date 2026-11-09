@@ -33,7 +33,7 @@ The token is never written to disk. The generated admin password is printed once
 
 ### 2. Deploy to Cloudflare button (coming soon — not yet verified)
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/edgebeat-dev/edgebeat)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/yolkmonday/edgebeat)
 
 Not yet verified end to end on a real account; use the manual path until it is. Requires a GitHub account (Cloudflare copies the repository into it). Updates by pulling upstream and redeploying.
 
