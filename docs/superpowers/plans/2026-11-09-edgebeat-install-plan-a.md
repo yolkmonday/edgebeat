@@ -138,6 +138,8 @@ export type InstallOptions = {
   adminPassword?: string;                // undefined → generate if absent
   subdomain?: string;                    // used only if the account has none
   onEvent?: (e: InstallEvent) => void;
+  pollIntervalMs?: number;               // health poll, default 3000
+  pollTimeoutMs?: number;                // health poll, default 90000
 };
 export type InstallResult = {
   statusUrl: string; adminUrl: string;   // https://<name>.<sub>.workers.dev/ and …/admin

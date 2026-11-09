@@ -24,11 +24,22 @@
     "wrangler": "^4.158.0"
   },
   "scripts": {
-    "test": "bun test && vitest run",
+    "test": "bun test && vitest run && bun --cwd cli test",
     "build": "vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/status-page",
-    "deploy": "vite build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "deploy": "vite build && wrangler deploy && wrangler d1 migrations apply DB --remote",
     "dev": "vite build && wrangler dev --test-scheduled",
     "db:generate": "drizzle-kit generate"
+  },
+  "packageManager": "bun@1.3.11",
+  "cloudflare": {
+    "bindings": {
+      "ADMIN_PASSWORD": {
+        "description": "Password for the Edgebeat admin. **At least 12 characters**, not `change-me`."
+      },
+      "ENCRYPTION_KEY": {
+        "description": "32 random bytes, base64. Generate with `openssl rand -base64 32`."
+      }
+    }
   }
 }

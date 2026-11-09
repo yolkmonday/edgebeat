@@ -1,0 +1,21 @@
+{
+  "name": "edgebeat",
+  "version": "0.1.0",
+  "description": "Install and update Edgebeat, an uptime monitor on one Cloudflare Worker.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "edgebeat": "dist/bin.js" },
+  "exports": { "./installer": "./dist/installer/index.js" },
+  "files": ["dist", "bundle", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "bun test ./src ./test",
+    "build": "bun build src/bin.ts src/installer/index.ts --target node --outdir dist",
+    "bundle": "bun src/bundle/build.ts",
+    "prepublishOnly": "bun run bundle && bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

@@ -10,23 +10,51 @@ The number of monitors the free Workers plan can handle per tick is a target, no
 
 On the free plan a Worker invocation may make 50 subrequests, and every redirect hop counts as one. Each tick therefore caps itself at 44 subrequests (40 checks + 4 retries; 6 stay reserved for alerts): initial fetches, retries, redirect hops and TCP connects all count. A check that cannot get a subrequest is not run this minute; it is carried to the next tick, never marked down. The paid plan caps at 1,000. A `checkBudget` override can lower the free-plan budget of 40 but not raise it.
 
-## Deploy (manual)
+## Install
 
-Requires a Cloudflare account and [Bun](https://bun.sh).
+Three paths, in order of effort. All of them need a Cloudflare account. Today only the manual path (3) works; the other two are not available yet.
+
+### 1. CLI (coming soon — not yet published)
+
+The `edgebeat` package is not on npm yet, so this command does not work today.
+
+```sh
+export CLOUDFLARE_API_TOKEN=...   # preferred over --api-token, which shows up in ps and shell history
+bunx edgebeat setup
+```
+
+The CLI reads the token from `CLOUDFLARE_API_TOKEN` (or asks for it, hidden) and installs the Worker, its D1 database and secrets. Create the token with these permissions:
+
+- `Account · Workers Scripts · Edit`
+- `Account · D1 · Edit`
+- `Account · Account Settings · Read`
+
+The token is never written to disk. The generated admin password is printed once.
+
+### 2. Deploy to Cloudflare button (coming soon — not yet verified)
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/yolkmonday/edgebeat)
+
+Not yet verified end to end on a real account; use the manual path until it is. Requires a GitHub account (Cloudflare copies the repository into it). Updates by pulling upstream and redeploying.
+
+### 3. Manual
+
+Requires [Bun](https://bun.sh).
 
 ```sh
 bun install
 bunx wrangler login
-bunx wrangler d1 create edgebeat
 ```
 
-Put the printed `database_id` into `wrangler.jsonc` (`d1_databases[0].database_id`), then set the secrets and deploy:
+`wrangler.jsonc` has no `database_id`: the first deploy creates the `edgebeat` D1 database automatically. Set the secrets and deploy:
 
 ```sh
 bunx wrangler secret put ADMIN_PASSWORD   # at least 12 characters; login is refused otherwise
 bunx wrangler secret put ENCRYPTION_KEY   # base64 of 32 random bytes: openssl rand -base64 32
-bun run deploy                            # builds the page, applies migrations (remote), deploys
+bun run deploy                            # builds the page, deploys, then applies migrations (remote)
 ```
+
+`bun run deploy` deploys before migrating because the first deploy is what creates the D1 database. For the few seconds until the migrations finish, the Worker runs without its tables: cron ticks and status requests fail harmlessly and recover on their own.
 
 ## Local development
 
