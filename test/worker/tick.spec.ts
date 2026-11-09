@@ -274,6 +274,32 @@ describe("runRollup", () => {
     expect(snaps[0]).toMatchObject({ bars, lastRollupMinute: DAY0 + 10 });
   });
 
+  it("folds at most 1,440 minutes of ticks per run and resumes after the last folded minute", async () => {
+    await db.insert(t.monitors).values(httpMonitor("a"));
+    await db.insert(t.snapshot).values({ id: 1, lastTickAt: 0, current: "{}", bars: "{}", lastRollupMinute: DAY0 });
+    const rows = Array.from({ length: 1500 }, (_, i) => ({
+      minute: DAY0 + 1 + i,
+      at: at(DAY0 + 1 + i),
+      results: JSON.stringify([["a", 1, 100, 200]]),
+    }));
+    // 3 params per row; D1 caps a statement at 100
+    const stmts = Array.from({ length: Math.ceil(rows.length / 33) }, (_, i) =>
+      db.insert(t.ticks).values(rows.slice(i * 33, (i + 1) * 33)),
+    );
+    await db.batch([stmts[0]!, ...stmts.slice(1)]);
+    const checksByDay = async () =>
+      Object.fromEntries((await db.select().from(t.dailyStats)).map((r) => [r.day, r.checks]));
+    const [d0, d1] = [utcDay(at(DAY0)), utcDay(at(DAY0 + 1440))];
+
+    await runRollup(env, at(DAY0 + 1501));
+    expect((await readSnapshot()).lastRollupMinute).toBe(DAY0 + 1440);
+    expect(await checksByDay()).toEqual({ [d0]: 1439, [d1]: 1 });
+
+    await runRollup(env, at(DAY0 + 1501));
+    expect((await readSnapshot()).lastRollupMinute).toBe(DAY0 + 1500);
+    expect(await checksByDay()).toEqual({ [d0]: 1439, [d1]: 61 });
+  });
+
   it("finalizes the previous day's downtime through day end for a 60-minute monitor", async () => {
     await db.insert(t.monitors).values(httpMonitor("a", { intervalMin: 60, confirmations: 1 }));
     const s = slotOf("a", 60);

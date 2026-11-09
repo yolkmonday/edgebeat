@@ -21,6 +21,8 @@ type Group = { monitorId: string; day: string; results: CheckResult[] };
 type StateEvent = { monitorId: string; toState: MonitorState; at: number };
 
 const DAILY_STATS_PARAMS = 7;
+// one ticks row per minute: bounds a catch-up run (e.g. after an outage) to one day of rows
+const MAX_FOLD_MINUTES = 1440;
 
 const toResult = ([monitorId, ok, latencyMs, code]: TickEntry): CheckResult => ({
   monitorId,
@@ -69,13 +71,19 @@ export const runRollup = async (env: Env, now: number): Promise<void> => {
   if (!snap) return;
 
   const [tickRows, monitorRows] = await db.batch([
-    db.select().from(ticks).where(gt(ticks.minute, snap.lastRollupMinute)).orderBy(ticks.minute),
+    db
+      .select()
+      .from(ticks)
+      .where(gt(ticks.minute, snap.lastRollupMinute))
+      .orderBy(ticks.minute)
+      .limit(MAX_FOLD_MINUTES),
     db.select({ id: monitors.id, intervalMin: monitors.intervalMin }).from(monitors),
   ]);
   if (tickRows.length === 0) return;
 
   const intervals = new Map(monitorRows.map((m) => [m.id, m.intervalMin]));
   const groups = groupTicks(tickRows, new Set(intervals.keys()));
+  // last minute actually folded; later rows wait for the next run
   const lastMinute = tickRows[tickRows.length - 1]!.minute;
   const today = utcDay(now);
   // days the previous rollup may have left open (downtime counted only up to that rollup's "now")
