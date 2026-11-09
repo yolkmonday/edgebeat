@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   isInstallError,
+  makeInstallError,
   type InstallEvent,
   type InstallStep,
   type InstallOptions,
@@ -383,5 +384,100 @@ describe("update", () => {
     const api = createFakeApi(seed);
     expect((await caught(update(api, v020, updateOpts([])))).code).toBe("not_installed");
     expect(api.state.writes).toEqual([]);
+  });
+});
+
+describe("resume and safety guards", () => {
+  const updateOpts = (events: InstallEvent[], over: Partial<InstallOptions> = {}) => {
+    const { adminPassword: _a, subdomain: _s, ...rest } = baseOpts(events, over);
+    return rest;
+  };
+  const NEWER = "This Edgebeat (schema 0002_future.sql) is newer than this installer (0.1.0). Use a newer edgebeat.";
+
+  test("a cron limit after the upload leaves a reachable install that update can finish", async () => {
+    const api = createFakeApi({ subdomain: "acme" });
+    const putSchedules = api.putSchedules;
+    api.putSchedules = async () => {
+      throw makeInstallError("limit_cron", "This account has no free cron trigger left.");
+    };
+    expect((await caught(install(api, v010, baseOpts([])))).code).toBe("limit_cron");
+    expect(api.state.scripts.edgebeat?.workersDev).toBe(true);
+
+    api.putSchedules = putSchedules;
+    expect((await caught(install(api, v010, baseOpts([])))).code).toBe("already_installed");
+    await update(api, v010, updateOpts([]));
+    expect(api.state.scripts.edgebeat?.crons).toEqual(["* * * * *"]);
+  });
+
+  test("route step still re-asserts workers.dev after the script step enabled it", async () => {
+    const api = createFakeApi({ subdomain: "acme" });
+    const events: InstallEvent[] = [];
+    await install(api, v010, baseOpts(events));
+    const methods = api.state.writes.map((w) => w.method);
+    expect(methods.indexOf("enableWorkersDev")).toBe(methods.indexOf("putScript") + 1);
+    expect(events.filter((e) => e.step === "route").map((e) => e.status)).toEqual(["start", "done"]);
+  });
+
+  test("refuses a foreign d1 with the same name before changes", async () => {
+    const api = createFakeApi({
+      subdomain: "acme",
+      d1: [{ uuid: "f1", name: "edgebeat", migrations: null, executed: [], tables: ["_cf_KV", "customers"] }],
+    });
+    const err = await caught(install(api, v010, baseOpts([])));
+    expect(err.code).toBe("name_taken");
+    expect(err.message).toContain('D1 database named "edgebeat"');
+    expect(api.state.writes).toEqual([]);
+  });
+
+  test("reuses an empty d1 with the same name", async () => {
+    const api = createFakeApi({
+      subdomain: "acme",
+      d1: [{ uuid: "e1", name: "edgebeat", migrations: null, executed: [], tables: ["_cf_KV", "sqlite_sequence"] }],
+    });
+    await install(api, v010, baseOpts([]));
+    expect(api.state.d1.map((d) => d.uuid)).toEqual(["e1"]);
+    expect(api.state.d1[0]?.migrations).toEqual(["0000_init.sql", "0001_more.sql"]);
+  });
+
+  test("setup resume refuses a database newer than the installer", async () => {
+    const api = createFakeApi({
+      subdomain: "acme",
+      d1: [{ uuid: "u1", name: "edgebeat", migrations: ["0000_init.sql", "0002_future.sql"], executed: [] }],
+      scripts: { edgebeat: fakeScript({ version: "0.3.0", workersDev: true, bindings: [sourceBinding("cli")] }) },
+    });
+    expect(await caught(install(api, v010, baseOpts([])))).toEqual({ code: "api_error", message: NEWER });
+    expect(api.state.writes).toEqual([]);
+  });
+
+  test("update refuses a database newer than the installer", async () => {
+    const api = createFakeApi(installedState({ migrations: ["0000_init.sql", "0001_more.sql", "0002_future.sql"] }));
+    expect(await caught(update(api, v010, updateOpts([])))).toEqual({ code: "api_error", message: NEWER });
+    expect(api.state.writes).toEqual([]);
+  });
+
+  test("update keeps the recorded install source", async () => {
+    const api = createFakeApi(installedState({ source: "cloud" }));
+    await update(api, v010, updateOpts([], { source: "cli" }));
+    expect(api.state.scripts.edgebeat?.bindings).toContainEqual(sourceBinding("cloud"));
+  });
+
+  test("a given password does not replace an existing one and says so", async () => {
+    const api = createFakeApi({
+      subdomain: "acme",
+      scripts: {
+        edgebeat: fakeScript({
+          version: "0.1.0",
+          workersDev: true,
+          bindings: [sourceBinding("cli")],
+          secrets: { ADMIN_PASSWORD: "existing-password" },
+        }),
+      },
+    });
+    const events: InstallEvent[] = [];
+    const result = await install(api, v010, baseOpts(events, { adminPassword: "a-strong-password" }));
+    expect(api.state.scripts.edgebeat?.secrets.ADMIN_PASSWORD).toBe("existing-password");
+    expect(result.generatedPassword).toBeNull();
+    const done = events.find((e) => e.step === "secrets" && e.status === "done");
+    expect(done && "detail" in done ? done.detail : "").toContain("admin password already set — kept");
   });
 });

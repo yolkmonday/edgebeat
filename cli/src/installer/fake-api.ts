@@ -24,6 +24,7 @@ export type FakeD1 = {
   name: string;
   migrations: string[] | null; // rows of d1_migrations; null = table absent
   executed: string[]; // every non-SELECT sql run against this database
+  tables?: string[]; // other tables in sqlite_master (d1_migrations is derived from `migrations`)
 };
 
 export type FakeWrite = { method: string; args: unknown[] };
@@ -90,6 +91,10 @@ export const createFakeApi = (seed: Partial<FakeState> = {}): CloudflareApi & { 
   const queryD1 = async (_accountId: string, uuid: string, sql: string): Promise<Record<string, unknown>[]> => {
     const d = db(uuid);
     if (isRead(sql)) {
+      if (/\bsqlite_master\b/.test(sql)) {
+        const tables = [...(d.migrations === null ? [] : ["d1_migrations"]), ...(d.tables ?? [])];
+        return tables.map((name) => ({ name }));
+      }
       if (!/\bd1_migrations\b/.test(sql)) return [];
       if (d.migrations === null) throw makeInstallError("api_error", "fake: no such table: d1_migrations");
       return d.migrations.map((name) => ({ name }));

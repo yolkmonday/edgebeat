@@ -11,6 +11,7 @@ import {
   type InstallResult,
   type InstallStep,
   type ReleaseBundle,
+  type InstallSource,
   type ScriptBinding,
 } from "../contracts";
 import { CREATE_MIGRATIONS_TABLE, SELECT_APPLIED, migrationBatch, pendingMigrations } from "./migrations";
@@ -102,15 +103,64 @@ const checkExistingScript = async (
   }
 };
 
+const SELECT_TABLES = "SELECT name FROM sqlite_master WHERE type = 'table';";
+
+// Reads only. `applied` is null when the database has no d1_migrations ledger.
+const inspectDatabase = async (
+  api: CloudflareApi,
+  accountId: string,
+  uuid: string,
+): Promise<{ applied: string[] | null; userTables: string[] }> => {
+  const tables = (await api.queryD1(accountId, uuid, SELECT_TABLES)).map((r) => String(r.name));
+  const userTables = tables.filter((t) => t !== "d1_migrations" && !t.startsWith("sqlite_") && !t.startsWith("_cf_"));
+  if (!tables.includes("d1_migrations")) return { applied: null, userTables };
+  const applied = (await api.queryD1(accountId, uuid, SELECT_APPLIED)).map((r) => String(r.name));
+  return { applied, userTables };
+};
+
+// Refuse to run older code against a schema this bundle does not know (R9).
+const guardDowngrade = (applied: string[], bundle: ReleaseBundle): void => {
+  const known = new Set(bundle.manifest.migrations);
+  if (applied.every((n) => known.has(n))) return;
+  const latest = [...applied].sort().at(-1) ?? "";
+  throw makeInstallError(
+    "api_error",
+    `This Edgebeat (schema ${latest}) is newer than this installer (${bundle.manifest.version}). Use a newer edgebeat.`,
+  );
+};
+
+// A D1 with our name is reused only if it is empty or holds an Edgebeat schema we can migrate.
+const checkExistingDatabase = async (
+  api: CloudflareApi,
+  accountId: string,
+  uuid: string,
+  name: string,
+  bundle: ReleaseBundle,
+): Promise<void> => {
+  const { applied, userTables } = await inspectDatabase(api, accountId, uuid);
+  if (applied) return guardDowngrade(applied, bundle);
+  if (userTables.length === 0) return;
+  throw makeInstallError(
+    "name_taken",
+    `A D1 database named "${name}" already exists in this account and does not hold Edgebeat data. Choose another name.`,
+  );
+};
+
 const databaseStep = async (
   api: CloudflareApi,
   accountId: string,
   name: string,
-  create: boolean,
+  bundle: ReleaseBundle | null, // set for update: re-check the schema before the first write
 ): Promise<Outcome<string>> => {
   const found = (await api.listD1(accountId)).find((d) => d.name === name);
-  if (found) return { value: found.uuid, status: "skip", detail: `using D1 "${name}"` };
-  if (!create) {
+  if (found) {
+    if (bundle) {
+      const { applied } = await inspectDatabase(api, accountId, found.uuid);
+      if (applied) guardDowngrade(applied, bundle);
+    }
+    return { value: found.uuid, status: "skip", detail: `using D1 "${name}"` };
+  }
+  if (bundle) {
     throw makeInstallError(
       "not_installed",
       `The D1 database "${name}" of this install is missing. Run setup to repair it.`,
@@ -142,12 +192,13 @@ const scriptStep = async (
   bundle: ReleaseBundle,
   opts: UpdateOptions,
   uuid: string,
+  source: InstallSource,
 ): Promise<Outcome<void>> => {
   const assetsJwt = await api.uploadAssets(opts.accountId, opts.name, bundle.assets);
   const bindings: ScriptBinding[] = [
     { type: "d1", name: "DB", id: uuid },
     { type: "assets", name: "ASSETS" },
-    { type: "plain_text", name: "EDGEBEAT_INSTALL_SOURCE", text: opts.source },
+    { type: "plain_text", name: "EDGEBEAT_INSTALL_SOURCE", text: source },
   ];
   await api.putScript(opts.accountId, opts.name, {
     manifest: bundle.manifest,
@@ -155,6 +206,8 @@ const scriptStep = async (
     assetsJwt,
     bindings,
   });
+  // Reachable right away, so a later failure (e.g. limit_cron) leaves an install that update can finish.
+  await api.enableWorkersDev(opts.accountId, opts.name);
   return { value: undefined, detail: bundle.manifest.version };
 };
 
@@ -188,12 +241,13 @@ const deployTail = async (
   uuid: string,
   subdomain: string,
   emit: Emit,
+  source: InstallSource,
   secrets: () => Promise<string | null>,
 ): Promise<InstallResult> => {
   const { accountId, name } = opts;
   const { version } = bundle.manifest;
   await runStep(emit, "migrations", () => migrationsStep(api, accountId, uuid, bundle));
-  await runStep(emit, "script", () => scriptStep(api, bundle, opts, uuid));
+  await runStep(emit, "script", () => scriptStep(api, bundle, opts, uuid, source));
   const generatedPassword = await secrets();
   try {
     await runStep(emit, "schedule", async () => {
@@ -255,6 +309,8 @@ export const install = async (
       }
     }
     if (exists) await checkExistingScript(api, opts, subdomain);
+    const db = d1s.find((d) => d.name === name);
+    if (db) await checkExistingDatabase(api, accountId, db.uuid, name, bundle);
     return { value: undefined };
   });
 
@@ -277,9 +333,9 @@ export const install = async (
     return { value: opts.subdomain, detail: `${opts.subdomain}.workers.dev` };
   });
 
-  const uuid = await runStep(emit, "database", () => databaseStep(api, accountId, name, true));
+  const uuid = await runStep(emit, "database", () => databaseStep(api, accountId, name, null));
 
-  return deployTail(api, bundle, opts, uuid, subdomain, emit, () =>
+  return deployTail(api, bundle, opts, uuid, subdomain, emit, opts.source, () =>
     runStep(emit, "secrets", async (): Promise<Outcome<string | null>> => {
       const present = await api.listSecretNames(accountId, name);
       const set: string[] = [];
@@ -289,12 +345,16 @@ export const install = async (
       }
       const generated =
         present.includes("ADMIN_PASSWORD") || opts.adminPassword !== undefined ? null : generatePassword();
+      const notes: string[] = [];
       if (!present.includes("ADMIN_PASSWORD")) {
         await api.putSecret(accountId, name, "ADMIN_PASSWORD", opts.adminPassword ?? generated ?? "");
         set.push("ADMIN_PASSWORD");
+      } else if (opts.adminPassword !== undefined) {
+        notes.push("admin password already set — kept");
       }
-      if (set.length === 0) return { value: null, status: "skip", detail: "secrets already set" };
-      return { value: generated, detail: `set ${set.join(", ")}` };
+      if (set.length > 0) notes.unshift(`set ${set.join(", ")}`);
+      if (notes.length === 0) return { value: null, status: "skip", detail: "secrets already set" };
+      return { value: generated, detail: notes.join("; ") };
     }),
   );
 };
@@ -307,22 +367,28 @@ export const update = async (
   const emit: Emit = opts.onEvent ?? (() => {});
   const { accountId, name } = opts;
 
-  const subdomain = await runStep(emit, "verify", async (): Promise<Outcome<string>> => {
-    validateName(name);
-    await checkToken(api);
-    const notInstalled = makeInstallError(
-      "not_installed",
-      `No Edgebeat install named "${name}" was found in this account.`,
-    );
-    const [exists, current] = await Promise.all([api.scriptExists(accountId, name), api.getSubdomain(accountId)]);
-    if (!exists || !current) throw notInstalled;
-    const health = await readHealth(api, healthUrl(name, current));
-    if (!health?.version) throw notInstalled;
-    if (health.installSource === "git") throw makeInstallError("git_managed", GIT_MANAGED_MESSAGE);
-    return { value: current, detail: `installed ${health.version}` };
-  });
+  const found = await runStep(
+    emit,
+    "verify",
+    async (): Promise<Outcome<{ subdomain: string; source: InstallSource }>> => {
+      validateName(name);
+      await checkToken(api);
+      const notInstalled = makeInstallError(
+        "not_installed",
+        `No Edgebeat install named "${name}" was found in this account.`,
+      );
+      const [exists, current] = await Promise.all([api.scriptExists(accountId, name), api.getSubdomain(accountId)]);
+      if (!exists || !current) throw notInstalled;
+      const health = await readHealth(api, healthUrl(name, current));
+      if (!health?.version) throw notInstalled;
+      if (health.installSource === "git") throw makeInstallError("git_managed", GIT_MANAGED_MESSAGE);
+      // Keep the recorded source (R10): a CLI update of a cloud install stays "cloud".
+      const source = health.installSource ?? opts.source;
+      return { value: { subdomain: current, source }, detail: `installed ${health.version}` };
+    },
+  );
 
-  const uuid = await runStep(emit, "database", () => databaseStep(api, accountId, name, false));
+  const uuid = await runStep(emit, "database", () => databaseStep(api, accountId, name, bundle));
 
-  return deployTail(api, bundle, opts, uuid, subdomain, emit, async () => null);
+  return deployTail(api, bundle, opts, uuid, found.subdomain, emit, found.source, async () => null);
 };
