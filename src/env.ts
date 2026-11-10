@@ -3,7 +3,7 @@ export type Env = {
   ASSETS: Fetcher;
   ADMIN_PASSWORD: string;
   ENCRYPTION_KEY: string;
-  EDGEBEAT_INSTALL_SOURCE?: string;
+  UPFLARE_INSTALL_SOURCE?: string;
   CF_ACCOUNT_ID?: string;
   CF_API_TOKEN?: string;
 };

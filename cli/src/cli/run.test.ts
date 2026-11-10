@@ -12,8 +12,8 @@ const GIT_COPY = "This install is managed by its git repository. Pull upstream a
 const STRONG = "a-strong-password-1";
 
 const RESULT: InstallResult = {
-  statusUrl: "https://edgebeat.me.workers.dev/",
-  adminUrl: "https://edgebeat.me.workers.dev/admin",
+  statusUrl: "https://upflare.me.workers.dev/",
+  adminUrl: "https://upflare.me.workers.dev/admin",
   version: "0.1.0",
   generatedPassword: null,
   warnings: [],
@@ -248,11 +248,11 @@ describe("run", () => {
     const h = makeHarness({
       env: { CLOUDFLARE_API_TOKEN: "t" },
       install: async () => {
-        throw makeInstallError("name_taken", "A Worker named edgebeat already exists");
+        throw makeInstallError("name_taken", "A Worker named upflare already exists");
       },
     });
     expect(await run(["setup", "--yes"], h.deps)).toBe(1);
-    expect(text(h)).toContain("✗ A Worker named edgebeat already exists");
+    expect(text(h)).toContain("✗ A Worker named upflare already exists");
   });
 
   test("install error after secrets were set still prints the generated password once", async () => {

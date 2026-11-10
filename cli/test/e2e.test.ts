@@ -15,7 +15,7 @@ import { install, update, validateAdminPassword, validateName } from "../src/ins
 const TOKEN = "cf-e2e-token-SECRET";
 const API = "https://api.cloudflare.com/client/v4";
 const SUBDOMAIN = "me";
-const NAME = "edgebeat";
+const NAME = "upflare";
 const HEALTH_HOST = `${NAME}.${SUBDOMAIN}.workers.dev`;
 const PASSWORD = "a-strong-password-1";
 const SESSION_JWT = "assets-session-jwt";
@@ -275,7 +275,7 @@ const createEmulator = (opts: { version: string; workersDevBlocked?: boolean }) 
     // A fresh deploy answers 503 for a moment before it serves the new code.
     if (state.healthCalls <= COLD_START_HEALTH_MISSES) return new Response("starting", { status: 503 });
     const bindings = (state.script.metadata.bindings ?? []) as { name: string; text?: string }[];
-    const source = bindings.find((b) => b.name === "EDGEBEAT_INSTALL_SOURCE")?.text ?? null;
+    const source = bindings.find((b) => b.name === "UPFLARE_INSTALL_SOURCE")?.text ?? null;
     return Response.json({ ok: true, version: opts.version, installSource: source });
   };
 
@@ -309,7 +309,7 @@ beforeAll(async () => {
     strayFetches.push(String(input instanceof Request ? input.url : input));
     throw new TypeError("network disabled in e2e");
   }) as unknown as typeof fetch;
-  bundleDir = await mkdtemp(join(tmpdir(), "edgebeat-e2e-bundle-"));
+  bundleDir = await mkdtemp(join(tmpdir(), "upflare-e2e-bundle-"));
   await buildBundle(repoRoot, bundleDir);
   bundle = await loadBundle(bundleDir);
 }, 240_000);
@@ -407,12 +407,12 @@ describe("e2e: setup then update against emulated Cloudflare", () => {
     expect(meta.bindings).toHaveLength(4);
     expect(meta.bindings).toContainEqual({
       type: "plain_text",
-      name: "EDGEBEAT_VERSION",
+      name: "UPFLARE_VERSION",
       text: bundle.manifest.version,
     });
     expect(meta.bindings).toContainEqual({ type: "d1", name: "DB", database_id: db!.uuid });
     expect(meta.bindings).toContainEqual({ type: "assets", name: "ASSETS" });
-    expect(meta.bindings).toContainEqual({ type: "plain_text", name: "EDGEBEAT_INSTALL_SOURCE", text: "cli" });
+    expect(meta.bindings).toContainEqual({ type: "plain_text", name: "UPFLARE_INSTALL_SOURCE", text: "cli" });
     expect(Object.keys(script.parts).sort()).toEqual(bundle.manifest.modules.map((m) => m.name).sort());
     for (const m of bundle.manifest.modules) {
       expect(script.parts[m.name]!.type).toBe(m.contentType);
@@ -428,7 +428,7 @@ describe("e2e: setup then update against emulated Cloudflare", () => {
     expect(state.pendingAssets.size).toBe(0);
 
     // Secrets set once; given password kept verbatim; key is 32 bytes base64.
-    expect(writesTo(state.log, "/workers/scripts/edgebeat/secrets", "PUT")).toHaveLength(2);
+    expect(writesTo(state.log, "/workers/scripts/upflare/secrets", "PUT")).toHaveLength(2);
     expect(state.secrets.get("ADMIN_PASSWORD")).toBe(PASSWORD);
     expect(atob(state.secrets.get("ENCRYPTION_KEY")!).length).toBe(32);
     expect(state.schedules).toEqual(["* * * * *"]);
@@ -436,7 +436,7 @@ describe("e2e: setup then update against emulated Cloudflare", () => {
     expect(state.healthCalls).toBeGreaterThan(COLD_START_HEALTH_MISSES);
 
     // CLI output.
-    expect(setupOut).toContain(`Edgebeat ${bundle.manifest.version} is ready.`);
+    expect(setupOut).toContain(`Upflare ${bundle.manifest.version} is ready.`);
     expect(setupOut).toContain(`https://${HEALTH_HOST}/`);
     expect(setupOut).toContain(`https://${HEALTH_HOST}/admin`);
     expect(setupOut).not.toContain("Admin password (shown once)");
@@ -466,7 +466,7 @@ describe("e2e: setup then update against emulated Cloudflare", () => {
     // Assets already stored: the session asks for nothing, the session jwt is used directly.
     expect(writesTo(state.log, "/workers/assets/upload", "POST")).toEqual([]);
     expect((state.script!.metadata as { assets: { jwt: string } }).assets.jwt).toBe(SESSION_JWT);
-    expect(updateOut).toContain(`Edgebeat ${bundle.manifest.version} is ready.`);
+    expect(updateOut).toContain(`Upflare ${bundle.manifest.version} is ready.`);
     expect(updateOut).not.toContain("Admin password (shown once)");
     expect(updateOut).not.toContain(TOKEN);
   }, 60_000);
@@ -489,7 +489,7 @@ describe("e2e: workers.dev blocked on this network (I1)", () => {
     const code = await run(["setup", "--yes", "--account", "acc1"], setup.deps);
     const out = setup.out.join("\n");
     expect({ code, out }).toEqual({ code: 0, out: expect.any(String) });
-    expect(out).toContain(`Edgebeat ${bundle.manifest.version} is ready.`);
+    expect(out).toContain(`Upflare ${bundle.manifest.version} is ready.`);
     expect(out).toContain(`! Installed, but ${warning}`);
     expect(out).not.toContain("✗");
     // Generated password printed exactly once, right after the secrets were set.
@@ -502,7 +502,7 @@ describe("e2e: workers.dev blocked on this network (I1)", () => {
     state.log = [];
     const again = makeDeps(emu, blockedInstaller);
     expect(await run(["setup", "--yes", "--account", "acc1"], again.deps)).toBe(1);
-    expect(again.out.join("\n")).toContain(`Edgebeat ${bundle.manifest.version} is already installed as "${NAME}"`);
+    expect(again.out.join("\n")).toContain(`Upflare ${bundle.manifest.version} is already installed as "${NAME}"`);
     expect(state.log.filter((l) => l.method !== "GET" && !l.path.endsWith("/query"))).toEqual([]);
 
     const upd = makeDeps(emu, blockedInstaller);

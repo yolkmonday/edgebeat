@@ -7,7 +7,7 @@ import { resetLoginLimiter } from "@/api/admin/auth";
 import type { ExportFile, ImportSummary } from "@/shared/admin-api";
 
 const db = getDb(env);
-const BASE = "https://edgebeat.test";
+const BASE = "https://upflare.test";
 
 let cookie = "";
 
@@ -43,7 +43,7 @@ const http = (slug: string, extra: Record<string, unknown> = {}) => ({
 });
 
 const file = (monitors: unknown[], groups: unknown[] = [], settings?: unknown) => ({
-  edgebeat: 1,
+  upflare: 1,
   settings,
   groups,
   monitors,
@@ -94,13 +94,13 @@ describe("export", () => {
     const hb = rows.find((r) => r.type === "heartbeat")!;
     const res = await call("GET", "/export");
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="edgebeat-config-\d{4}-\d{2}-\d{2}\.json"$/);
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="upflare-config-\d{4}-\d{2}-\d{2}\.json"$/);
     const text = await res.text();
     for (const secret of [hb.heartbeatToken!, "heartbeatToken", "beatUrl", "/beat/", '"id"', "createdAt", "updatedAt", ...rows.map((r) => r.id)]) {
       expect(text).not.toContain(secret);
     }
     const out = JSON.parse(text) as ExportFile;
-    expect(out.edgebeat).toBe(1);
+    expect(out.upflare).toBe(1);
     expect(out.settings).toEqual({ siteName: "My Status", plan: "free", checkBudget: null });
     expect(out.groups).toEqual([{ slug: "core", name: "Core", sort: 2 }]);
     expect(out.monitors.map((m) => [m.slug, m.group])).toEqual(
@@ -300,7 +300,7 @@ describe("import", () => {
   });
 
   it("rejects malformed files and duplicate slugs", async () => {
-    for (const body of [null, {}, { edgebeat: 2, groups: [], monitors: [] }, { edgebeat: 1, groups: [] }, "nope"]) {
+    for (const body of [null, {}, { upflare: 2, groups: [], monitors: [] }, { upflare: 1, groups: [] }, "nope"]) {
       expect((await importFile(body)).status).toBe(400);
     }
     const dup = await importFile(

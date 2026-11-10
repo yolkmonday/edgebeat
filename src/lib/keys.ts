@@ -32,4 +32,4 @@ const derive = async (env: Env, info: string, usages: ("sign" | "verify")[]): Pr
 };
 
 /** HMAC-SHA256 key for session JWTs. Throws Error('bad_encryption_key') when ENCRYPTION_KEY is unusable. */
-export const jwtKey = (env: Env): Promise<CryptoKey> => derive(env, "edgebeat-jwt", ["sign", "verify"]);
+export const jwtKey = (env: Env): Promise<CryptoKey> => derive(env, "upflare-jwt", ["sign", "verify"]);

@@ -91,7 +91,7 @@ export const buildBundle = async (repoRoot: string, outDir: string): Promise<Rel
 
   await run("bun", ["run", "build"], root);
 
-  const tmp = await mkdtemp(join(tmpdir(), "edgebeat-bundle-"));
+  const tmp = await mkdtemp(join(tmpdir(), "upflare-bundle-"));
   try {
     // Bundling only: --dry-run needs no auth and makes no network calls.
     await run(bin("wrangler"), ["deploy", "--dry-run", "--outdir", tmp], root);

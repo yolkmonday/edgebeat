@@ -1,20 +1,20 @@
-# Edgebeat Install Plan A — Release Bundle, Installer Core, CLI, Deploy Button
+# Upflare Install Plan A — Release Bundle, Installer Core, CLI, Deploy Button
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A developer runs `bunx edgebeat setup` (or `npx`), pastes a Cloudflare API token, and gets a working Edgebeat in their account; `edgebeat update` upgrades it; the repo is ready for a "Deploy to Cloudflare" button. All paths produce the same installation.
+**Goal:** A developer runs `bunx upflare setup` (or `npx`), pastes a Cloudflare API token, and gets a working Upflare in their account; `upflare update` upgrades it; the repo is ready for a "Deploy to Cloudflare" button. All paths produce the same installation.
 
-**Architecture:** A new npm package `edgebeat` in `cli/` (own `package.json`, not a workspace) holds the installer core (pure TS: `fetch` + Web Crypto, no fs) behind a `CloudflareApi` interface, a REST implementation of that interface, a release-bundle builder/loader, and the CLI. The Worker gains `version` + `installSource` on `/api/v1/health`. Task 0 fixes every shared contract so Tasks 1–5 run in parallel on disjoint directories.
+**Architecture:** A new npm package `upflare` in `cli/` (own `package.json`, not a workspace) holds the installer core (pure TS: `fetch` + Web Crypto, no fs) behind a `CloudflareApi` interface, a REST implementation of that interface, a release-bundle builder/loader, and the CLI. The Worker gains `version` + `installSource` on `/api/v1/health`. Task 0 fixes every shared contract so Tasks 1–5 run in parallel on disjoint directories.
 
 **Tech Stack:** TypeScript strict, Bun (build, `bun test`), Node ≥ 20 compatible output (`npx`), Cloudflare REST API v4, Wrangler 4 (bundling only), existing Worker stack (Hono, D1, Vitest pool).
 
-**Spec:** `docs/superpowers/specs/2026-11-09-edgebeat-install-design.md` (builds on `2026-11-09-edgebeat-design.md`).
+**Spec:** `docs/superpowers/specs/2026-11-09-upflare-install-design.md` (builds on `2026-11-09-upflare-design.md`).
 
 ## Global Constraints
 
 - Installer core uses only `fetch`, Web Crypto, `TextEncoder`/`TextDecoder`, `atob`/`btoa`: no `node:*`, no `fs`, no Worker-only APIs (it must run in Bun, Node 20 and a Worker).
-- Worker name default `edgebeat`; **D1 name = Worker name**; slug rule for names `^[a-z0-9-]{1,63}$`.
-- `EDGEBEAT_INSTALL_SOURCE` ∈ `cli | cloud | git`; CLI installs set `cli`; `wrangler.jsonc` sets `git`. CLI/dashboard **refuse to update a `git` install** with: `This install is managed by its git repository. Pull upstream and redeploy to update.`
+- Worker name default `upflare`; **D1 name = Worker name**; slug rule for names `^[a-z0-9-]{1,63}$`.
+- `UPFLARE_INSTALL_SOURCE` ∈ `cli | cloud | git`; CLI installs set `cli`; `wrangler.jsonc` sets `git`. CLI/dashboard **refuse to update a `git` install** with: `This install is managed by its git repository. Pull upstream and redeploy to update.`
 - Secrets are set **only if absent**: `ENCRYPTION_KEY` = 32 random bytes, standard base64; `ADMIN_PASSWORD` user-given or generated (24 chars from `A–Z a–z 0–9`).
 - Admin password rule everywhere: length ≥ 12 and not `change-me`. Error copy: `Admin password must be at least 12 characters and not "change-me".`
 - Script uploads always send `keep_bindings: ["secret_text"]` so updates never touch secrets.
@@ -28,7 +28,7 @@
 
 1. **Setup interrupted midway then re-run** (D1 created, script not uploaded) → resumes, re-uses the D1, does not regenerate existing secrets, ends healthy. Test: Task 4 `resumes after partial install`.
 2. **Update on a working install** → new code + pending migrations only; `ADMIN_PASSWORD`/`ENCRYPTION_KEY` and data untouched. Test: Task 4 `update keeps secrets and applies only new migrations`.
-3. **Name taken by a non-Edgebeat Worker** → refuses before any change. Test: Task 4 `refuses foreign worker with same name`.
+3. **Name taken by a non-Upflare Worker** → refuses before any change. Test: Task 4 `refuses foreign worker with same name`.
 4. **Account with no workers.dev subdomain** → CLI asks for one; non-interactive mode fails with a clear message before creating anything. Tests: Task 4 `requires subdomain before changes`, Task 5 `prompts for subdomain`.
 5. **Token missing a permission / free-plan limit reached (10 D1, 100 Workers, cron slots)** → plain-language error naming the missing permission or limit, before any change (cron: mapped from the API error). Tests: Task 3 `maps 403 to missing permission`, Task 4 `stops on d1 limit before changes`.
 
@@ -38,7 +38,7 @@
 
 ```
 src/version.ts                       # VERSION constant (Task 1)
-src/api/app.ts, src/env.ts           # health + EDGEBEAT_INSTALL_SOURCE (Task 1)
+src/api/app.ts, src/env.ts           # health + UPFLARE_INSTALL_SOURCE (Task 1)
 wrangler.jsonc, .dev.vars.example, README.md   # button prep (Task 1)
 package.json, tsconfig.json          # root scripts, packageManager, cloudflare.bindings (Task 0)
 cli/
@@ -148,10 +148,10 @@ export type InstallResult = {
 ```
 (Write `InstallError` as a plain `Error` with a `code` property plus `makeInstallError(code, message)` and `isInstallError(e)` helpers — no classes.)
 
-- [ ] **Step 1:** `cli/package.json`: `name: "edgebeat"`, `version` = root version, `type: "module"`, `bin: { edgebeat: "dist/bin.js" }`, `exports: { "./installer": "./dist/installer.js" }`, `files: ["dist", "bundle"]`, `engines: { node: ">=20" }`, scripts `test: "bun test"`, `build: "bun build src/bin.ts src/installer/index.ts --target node --outdir dist"`, `bundle: "bun src/bundle/build.ts"`, `prepublishOnly: "bun run bundle && bun run build"`. `cli/bunfig.toml`: `[test] root = "src"` plus `test` dir. `cli/tsconfig.json` strict, `lib: ["ES2022", "DOM"]` (for `fetch`/`Response` types), `types: ["bun"]`.
+- [ ] **Step 1:** `cli/package.json`: `name: "upflare"`, `version` = root version, `type: "module"`, `bin: { upflare: "dist/bin.js" }`, `exports: { "./installer": "./dist/installer.js" }`, `files: ["dist", "bundle"]`, `engines: { node: ">=20" }`, scripts `test: "bun test"`, `build: "bun build src/bin.ts src/installer/index.ts --target node --outdir dist"`, `bundle: "bun src/bundle/build.ts"`, `prepublishOnly: "bun run bundle && bun run build"`. `cli/bunfig.toml`: `[test] root = "src"` plus `test` dir. `cli/tsconfig.json` strict, `lib: ["ES2022", "DOM"]` (for `fetch`/`Response` types), `types: ["bun"]`.
 - [ ] **Step 2:** Write `contracts.ts` exactly as above; `contracts.test.ts`: `makeInstallError("weak_password", m)` → `isInstallError` true, `.code === "weak_password"`, `.message === m`; plain `Error` → false.
-- [ ] **Step 3:** Root `package.json`: `"packageManager": "bun@<installed version>"`, `"test": "bun test && vitest run && bun --cwd cli test"`, `"cloudflare": { "bindings": { "ADMIN_PASSWORD": { "description": "Password for the Edgebeat admin. **At least 12 characters**, not `change-me`." }, "ENCRYPTION_KEY": { "description": "32 random bytes, base64. Generate with `openssl rand -base64 32`." } } }`.
-- [ ] **Step 4:** `bun run test` and `bunx tsc --noEmit -p cli` → pass. Commit `chore(cli): scaffold edgebeat package and install contracts`.
+- [ ] **Step 3:** Root `package.json`: `"packageManager": "bun@<installed version>"`, `"test": "bun test && vitest run && bun --cwd cli test"`, `"cloudflare": { "bindings": { "ADMIN_PASSWORD": { "description": "Password for the Upflare admin. **At least 12 characters**, not `change-me`." }, "ENCRYPTION_KEY": { "description": "32 random bytes, base64. Generate with `openssl rand -base64 32`." } } }`.
+- [ ] **Step 4:** `bun run test` and `bunx tsc --noEmit -p cli` → pass. Commit `chore(cli): scaffold upflare package and install contracts`.
 
 ---
 
@@ -161,14 +161,14 @@ export type InstallResult = {
 - Create: `src/version.ts`, `test/worker/version.spec.ts`
 - Modify: `src/api/app.ts:12`, `src/env.ts`, `wrangler.jsonc`, `.dev.vars.example`, `README.md`, `test/worker/health.spec.ts`
 
-**Interfaces:** Produces `GET /api/v1/health` → `{ ok: true, version: string, installSource: "cli" | "cloud" | "git" | null }` (consumed by Task 3 `fetchHealth`). `Env.EDGEBEAT_INSTALL_SOURCE?: string`.
+**Interfaces:** Produces `GET /api/v1/health` → `{ ok: true, version: string, installSource: "cli" | "cloud" | "git" | null }` (consumed by Task 3 `fetchHealth`). `Env.UPFLARE_INSTALL_SOURCE?: string`.
 
 - [ ] **Step 1:** Failing tests: health returns `version === VERSION`; `installSource === "git"` under the test config (vars from `wrangler.jsonc`); an unknown value maps to `null`. `version.spec.ts`: `VERSION` equals root `package.json` `version`.
 - [ ] **Step 2:** `bunx vitest run test/worker/health.spec.ts test/worker/version.spec.ts` → FAIL.
 - [ ] **Step 3:** `src/version.ts` `export const VERSION = "0.1.0"`; health handler; `Env` field.
-- [ ] **Step 4:** `wrangler.jsonc`: add `"vars": { "EDGEBEAT_INSTALL_SOURCE": "git" }`; **remove `database_id`** (auto-provisioning). Confirm local `vitest run` and `bunx wrangler deploy --dry-run --outdir /tmp/eb` still work without it; if the pool requires an id, keep a local-only override in `vitest.config.ts`, not in `wrangler.jsonc`.
+- [ ] **Step 4:** `wrangler.jsonc`: add `"vars": { "UPFLARE_INSTALL_SOURCE": "git" }`; **remove `database_id`** (auto-provisioning). Confirm local `vitest run` and `bunx wrangler deploy --dry-run --outdir /tmp/eb` still work without it; if the pool requires an id, keep a local-only override in `vitest.config.ts`, not in `wrangler.jsonc`.
 - [ ] **Step 5:** `.dev.vars.example`: `ADMIN_PASSWORD=` with comment `# at least 12 characters, not "change-me"`, keep the `ENCRYPTION_KEY` comment.
-- [ ] **Step 6:** README: add "Install" section with three paths in this order — CLI (`bunx edgebeat setup`, token permissions from Global Constraints), Deploy to Cloudflare button (markdown `[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/edgebeat-dev/edgebeat)` with a note "requires a GitHub account; updates by pulling upstream"), manual (existing steps, updated for no `database_id`). Keep curl examples.
+- [ ] **Step 6:** README: add "Install" section with three paths in this order — CLI (`bunx upflare setup`, token permissions from Global Constraints), Deploy to Cloudflare button (markdown `[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/upflare-dev/upflare)` with a note "requires a GitHub account; updates by pulling upstream"), manual (existing steps, updated for no `database_id`). Keep curl examples.
 - [ ] **Step 7:** `bun run test` + `bun run typecheck` → pass. Commit `feat: report version and install source on health`.
 
 ---
@@ -219,7 +219,7 @@ Endpoints (verify field names against the current API reference while implementi
 
 **Interfaces:**
 - Consumes: `CloudflareApi`, `ReleaseBundle`, `InstallOptions/Result/Event`, error helpers (Task 0).
-- Produces (re-exported from `installer/index.ts`, the `edgebeat/installer` entry):
+- Produces (re-exported from `installer/index.ts`, the `upflare/installer` entry):
   - `install(api: CloudflareApi, bundle: ReleaseBundle, opts: InstallOptions): Promise<InstallResult>`
   - `update(api: CloudflareApi, bundle: ReleaseBundle, opts: Omit<InstallOptions, "adminPassword" | "subdomain">): Promise<InstallResult>`
   - `validateAdminPassword(p: string): void` (throws `weak_password`), `validateName(n: string): void` (throws `invalid_name`)
@@ -227,16 +227,16 @@ Endpoints (verify field names against the current API reference while implementi
   - `generatePassword(): string`, `generateEncryptionKey(): string`
   - `createFakeApi(seed?: Partial<FakeState>): CloudflareApi & { state: FakeState }` (test helper, exported from `fake-api.ts` only)
 
-Step order and rules (`install`): `verify` (missing → `missing_permission`) → `limits` (D1 count ≥ 10 → `limit_d1`, Workers ≥ 100 → `limit_workers`, both only when the D1/Worker would be **new**) → name checks: script exists + health has a version → `already_installed`; script exists without Edgebeat health → `name_taken` → `subdomain` (none and no `opts.subdomain` → `no_subdomain`; else create) → `database` (find by name or create) → `migrations` (ensure `d1_migrations`, apply pending in order, insert name after each file) → `script` (upload assets, put script with bindings `DB`, `ASSETS`, `EDGEBEAT_INSTALL_SOURCE`=`opts.source`) → `secrets` (list names; set `ENCRYPTION_KEY` if absent; `ADMIN_PASSWORD` if absent: validated given value or generated) → `schedule` → `route` → `health` (poll `fetchHealth` every 3 s up to 90 s until `version === manifest.version`, else `health_failed` with the URL). All checks that can refuse run **before** the first write. Each step emits `start` then `done`/`skip`; a thrown `InstallError` emits `fail` and rethrows.
+Step order and rules (`install`): `verify` (missing → `missing_permission`) → `limits` (D1 count ≥ 10 → `limit_d1`, Workers ≥ 100 → `limit_workers`, both only when the D1/Worker would be **new**) → name checks: script exists + health has a version → `already_installed`; script exists without Upflare health → `name_taken` → `subdomain` (none and no `opts.subdomain` → `no_subdomain`; else create) → `database` (find by name or create) → `migrations` (ensure `d1_migrations`, apply pending in order, insert name after each file) → `script` (upload assets, put script with bindings `DB`, `ASSETS`, `UPFLARE_INSTALL_SOURCE`=`opts.source`) → `secrets` (list names; set `ENCRYPTION_KEY` if absent; `ADMIN_PASSWORD` if absent: validated given value or generated) → `schedule` → `route` → `health` (poll `fetchHealth` every 3 s up to 90 s until `version === manifest.version`, else `health_failed` with the URL). All checks that can refuse run **before** the first write. Each step emits `start` then `done`/`skip`; a thrown `InstallError` emits `fail` and rethrows.
 `update`: requires health with a version (`not_installed` otherwise) and `installSource !== "git"` (`git_managed` with the Global Constraints copy); runs `database` (must exist) → `migrations` → `script` → `schedule` → `route` → `health`; never touches secrets.
 
 - [ ] **Step 1:** Failing tests on `createFakeApi`:
-  - fresh account → events in step order, all `done`; fake has D1 named `opts.name`, script with the 3 bindings, both secrets, schedule `["* * * * *"]`, migrations recorded; result URLs `https://edgebeat.<sub>.workers.dev/` and `/admin`; `generatedPassword` length 24.
+  - fresh account → events in step order, all `done`; fake has D1 named `opts.name`, script with the 3 bindings, both secrets, schedule `["* * * * *"]`, migrations recorded; result URLs `https://upflare.<sub>.workers.dev/` and `/admin`; `generatedPassword` length 24.
   - `resumes after partial install`: seed D1 + `d1_migrations` with the first migration + `ENCRYPTION_KEY` present → no new D1, only remaining migrations applied, `ENCRYPTION_KEY` unchanged, `ADMIN_PASSWORD` set once.
   - `update keeps secrets and applies only new migrations`: installed v0.1.0 with secrets → update with a bundle adding `0001_x.sql` → only that migration run, secret values unchanged, script updated with `keep_bindings`.
   - `refuses foreign worker with same name`: script exists, health `null` → `name_taken`, zero write calls recorded.
   - `requires subdomain before changes`: no subdomain, no option → `no_subdomain`, zero writes.
-  - `stops on d1 limit before changes`: 10 D1 in account, none named `edgebeat` → `limit_d1`, zero writes.
+  - `stops on d1 limit before changes`: 10 D1 in account, none named `upflare` → `limit_d1`, zero writes.
   - `update` on `installSource: "git"` → `git_managed` with the exact copy; on no install → `not_installed`.
   - weak given password (`"change-me"`, 11 chars) → `weak_password` before any write.
   - `pendingMigrations`: splits on `--> statement-breakpoint`, trims, drops empty statements, keeps file order, skips applied names.
@@ -254,7 +254,7 @@ Step order and rules (`install`): `verify` (missing → `missing_permission`) �
 - Consumes: `install`, `update`, `validateAdminPassword`, `validateName` (Task 4, via `../installer`), `createCloudflareApi` (Task 3), `loadBundle` (Task 2), contracts (Task 0). Code against these signatures; tests inject fakes.
 - Produces: `run(argv: string[], deps: { api: (token: string) => CloudflareApi; bundle: () => Promise<ReleaseBundle>; io: Io }): Promise<number>` (exit code) where `Io = { prompt(q: string, opts?: { secret?: boolean }): Promise<string>; print(line: string): void; isTTY: boolean; env: Record<string, string | undefined> }`. `bin.ts` wires real deps (bundle dir = `<package>/bundle`).
 
-Commands and flags: `edgebeat setup|update|help|--version`; flags `--api-token`, `--account <id>`, `--name <name>` (default `edgebeat`), `--admin-password <p>`, `--subdomain <s>`, `--yes` (non-interactive). Token resolution: `--api-token` → `CLOUDFLARE_API_TOKEN` → interactive paste (secret input) after printing the permission list and `https://dash.cloudflare.com/profile/api-tokens`. Account: single → auto; several → numbered pick; `--account` wins. Password: interactive asks "Choose an admin password (leave empty to generate)"; validated with `validateAdminPassword`, re-asked on failure. Output: checklist line per step (`✓ Database`, `✗ Script — <message>`), then the result block printing status URL, admin URL and, if generated, `Admin password (shown once): <p>`. Exit 0 success, 1 install error, 2 usage error.
+Commands and flags: `upflare setup|update|help|--version`; flags `--api-token`, `--account <id>`, `--name <name>` (default `upflare`), `--admin-password <p>`, `--subdomain <s>`, `--yes` (non-interactive). Token resolution: `--api-token` → `CLOUDFLARE_API_TOKEN` → interactive paste (secret input) after printing the permission list and `https://dash.cloudflare.com/profile/api-tokens`. Account: single → auto; several → numbered pick; `--account` wins. Password: interactive asks "Choose an admin password (leave empty to generate)"; validated with `validateAdminPassword`, re-asked on failure. Output: checklist line per step (`✓ Database`, `✗ Script — <message>`), then the result block printing status URL, admin URL and, if generated, `Admin password (shown once): <p>`. Exit 0 success, 1 install error, 2 usage error.
 
 - [ ] **Step 1:** Failing tests with fake deps:
   - `args`: parses all flags; unknown flag → usage error (exit 2) listing valid flags.
@@ -265,13 +265,13 @@ Commands and flags: `edgebeat setup|update|help|--version`; flags `--api-token`,
   - success output contains both URLs and the generated password exactly once; token never printed.
   - `update` with `git_managed` → exit 1 and the exact Global Constraints copy.
 - [ ] **Step 2:** `bun --cwd cli test src/cli` → FAIL. **Step 3:** implement (`prompt.ts` with `node:readline/promises`, secret input without echo; colours only when `isTTY`). **Step 4:** → PASS.
-- [ ] **Step 5:** `cli/README.md`: usage, flags, token permissions, what gets created, update rules. Commit `feat(cli): edgebeat setup and update commands`.
+- [ ] **Step 5:** `cli/README.md`: usage, flags, token permissions, what gets created, update rules. Commit `feat(cli): upflare setup and update commands`.
 
 ---
 
 ### Task 6: Integration, packaging, docs
 
-**Files:** Create `cli/test/e2e.test.ts`; Modify: `cli/package.json` (only if wiring needs it), `.gitignore` (`cli/bundle`, `cli/dist`), `docs/superpowers/specs/2026-11-09-edgebeat-install-design.md` (status line only)
+**Files:** Create `cli/test/e2e.test.ts`; Modify: `cli/package.json` (only if wiring needs it), `.gitignore` (`cli/bundle`, `cli/dist`), `docs/superpowers/specs/2026-11-09-upflare-install-design.md` (status line only)
 
 **Interfaces:** Consumes everything above with real implementations.
 
@@ -284,4 +284,4 @@ Commands and flags: `edgebeat setup|update|help|--version`; flags `--api-token`,
 
 ## Owner verification (not agent work)
 
-After the repo is public and the npm name is reserved: run `bunx edgebeat setup` and the Deploy button once each on a throwaway free account; confirm health, the status page, cron firing, and that `edgebeat update` refuses the button install with the `git_managed` message.
+After the repo is public and the npm name is reserved: run `bunx upflare setup` and the Deploy button once each on a throwaway free account; confirm health, the status page, cron firing, and that `upflare update` refuses the button install with the `git_managed` message.

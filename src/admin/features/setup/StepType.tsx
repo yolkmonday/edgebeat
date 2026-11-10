@@ -14,7 +14,7 @@ export const StepType = () => {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-[-0.02em] text-text">What should Edgebeat watch?</h1>
+        <h1 className="text-2xl font-semibold tracking-[-0.02em] text-text">What should Upflare watch?</h1>
         <p className="text-sm text-muted">Pick one to start. You can add the other kinds later.</p>
       </div>
       <RadioCards aria-label="Monitor type" columns={3} items={ITEMS} value={type} onValueChange={(v) => setType(v as MonitorType)} />

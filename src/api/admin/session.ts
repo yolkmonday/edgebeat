@@ -27,7 +27,7 @@ sessionApi.get("/", async (c) => {
   const stored = parseStored(settingRows);
   const body: Session = {
     version: VERSION,
-    installSource: INSTALL_SOURCES.find((s) => s === c.env.EDGEBEAT_INSTALL_SOURCE) ?? null,
+    installSource: INSTALL_SOURCES.find((s) => s === c.env.UPFLARE_INSTALL_SOURCE) ?? null,
     siteName: stored.siteName,
     plan: stored.plan,
     auth: c.get("auth").kind,

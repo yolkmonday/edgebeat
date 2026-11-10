@@ -1,4 +1,4 @@
-// Installer core: installs or updates Edgebeat through a CloudflareApi. Every step
+// Installer core: installs or updates Upflare through a CloudflareApi. Every step
 // re-reads the account, so a run can resume from any point; every check that can
 // refuse runs before the first write. Uses only Web APIs (runs in Bun, Node, Workers).
 import {
@@ -56,7 +56,7 @@ const runStep = async <T>(emit: Emit, step: InstallStep, fn: () => Promise<Outco
 const origin = (name: string, subdomain: string): string => `https://${name}.${subdomain}.workers.dev`;
 const healthUrl = (name: string, subdomain: string): string => `${origin(name, subdomain)}/api/v1/health`;
 
-// Smoke check only (R13): never used to decide whether Edgebeat is installed.
+// Smoke check only (R13): never used to decide whether Upflare is installed.
 const readHealth = async (api: CloudflareApi, url: string) => {
   try {
     return await api.fetchHealth(url);
@@ -81,7 +81,7 @@ const checkToken = async (api: CloudflareApi, accountId: string): Promise<void> 
 const nameTaken = (name: string): Error =>
   makeInstallError(
     "name_taken",
-    `A Worker named "${name}" already exists in this account and is not an Edgebeat install. Choose another name.`,
+    `A Worker named "${name}" already exists in this account and is not an Upflare install. Choose another name.`,
   );
 
 // Refuse to replace newer installed code with this bundle (R18). Unknown or non-semver versions pass.
@@ -90,7 +90,7 @@ const guardCodeDowngrade = (installed: string | undefined, bundle: ReleaseBundle
   if (!installed || (compareVersions(installed, version) ?? 0) <= 0) return;
   throw makeInstallError(
     "api_error",
-    `This Edgebeat (v${installed}) is newer than this installer (v${version}). Run bunx edgebeat@latest update.`,
+    `This Upflare (v${installed}) is newer than this installer (v${version}). Run bunx upflare@latest update.`,
   );
 };
 
@@ -106,12 +106,12 @@ const checkExistingScript = async (
   if (info.installSource === "git") {
     throw makeInstallError(
       "already_installed",
-      `Edgebeat is already installed as "${opts.name}". ${GIT_MANAGED_MESSAGE}`,
+      `Upflare is already installed as "${opts.name}". ${GIT_MANAGED_MESSAGE}`,
     );
   }
   const secrets = await api.listSecretNames(opts.accountId, opts.name);
   if (secrets.includes("ENCRYPTION_KEY") && secrets.includes("ADMIN_PASSWORD")) {
-    const version = info.version ? `Edgebeat ${info.version}` : "Edgebeat";
+    const version = info.version ? `Upflare ${info.version}` : "Upflare";
     throw makeInstallError("already_installed", `${version} is already installed as "${opts.name}". Use update to upgrade it.`);
   }
   guardCodeDowngrade(info.version, bundle);
@@ -139,11 +139,11 @@ const guardDowngrade = (applied: string[], bundle: ReleaseBundle): void => {
   const latest = [...applied].sort().at(-1) ?? "";
   throw makeInstallError(
     "api_error",
-    `This Edgebeat (schema ${latest}) is newer than this installer (${bundle.manifest.version}). Use a newer edgebeat.`,
+    `This Upflare (schema ${latest}) is newer than this installer (${bundle.manifest.version}). Use a newer upflare.`,
   );
 };
 
-// A D1 with our name is reused only if it is empty or holds an Edgebeat schema we can migrate.
+// A D1 with our name is reused only if it is empty or holds an Upflare schema we can migrate.
 const checkExistingDatabase = async (
   api: CloudflareApi,
   accountId: string,
@@ -156,7 +156,7 @@ const checkExistingDatabase = async (
   if (userTables.length === 0) return;
   throw makeInstallError(
     "name_taken",
-    `A D1 database named "${name}" already exists in this account and does not hold Edgebeat data. Choose another name.`,
+    `A D1 database named "${name}" already exists in this account and does not hold Upflare data. Choose another name.`,
   );
 };
 
@@ -401,7 +401,7 @@ export const update = async (
       await checkToken(api, accountId);
       const notInstalled = makeInstallError(
         "not_installed",
-        `No Edgebeat install named "${name}" was found in this account.`,
+        `No Upflare install named "${name}" was found in this account.`,
       );
       // Identity from the Cloudflare API, not workers.dev (R13).
       const [info, current] = await Promise.all([api.getScriptInfo(accountId, name), api.getSubdomain(accountId)]);

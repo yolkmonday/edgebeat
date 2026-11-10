@@ -6,7 +6,7 @@ export type UsageInput = {
   heartbeatPeriodsS: number[];
 };
 
-/** Estimated D1 rows written today by Edgebeat itself, and the projection to the end of the UTC day. */
+/** Estimated D1 rows written today by Upflare itself, and the projection to the end of the UTC day. */
 export const estimateWritesToday = (i: UsageInput): { value: number; projected: number } => {
   const beats = i.heartbeatPeriodsS.reduce(
     (sum, periodS) => sum + Math.min(i.minutesElapsed * 2, (i.minutesElapsed * 60) / periodS),

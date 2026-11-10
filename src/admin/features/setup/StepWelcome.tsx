@@ -18,7 +18,7 @@ export const StepWelcome = () => {
       <div className="flex max-w-md flex-col gap-2">
         <h1 className="text-2xl font-semibold tracking-[-0.02em] text-text">Let's add your first monitor</h1>
         <p className="text-sm text-muted">
-          Edgebeat checks it from your Cloudflare account and shows the result on your status page. Takes about a minute.
+          Upflare checks it from your Cloudflare account and shows the result on your status page. Takes about a minute.
         </p>
       </div>
       <div className="flex items-center gap-2">

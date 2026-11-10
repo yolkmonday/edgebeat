@@ -1,9 +1,9 @@
-# Edgebeat — Design
+# Upflare — Design
 
 Date: 2026-11-09
 Status: approved by owner 2026-11-09
 
-Edgebeat is an open-source uptime monitor, heartbeat (push) monitor and public
+Upflare is an open-source uptime monitor, heartbeat (push) monitor and public
 status page that runs entirely on the user's own Cloudflare account, on the
 free plan, deployed with one click.
 
@@ -18,7 +18,7 @@ owner may override. Unmarked = derived from research or constraints.
   Stack) showed "all green, 100%" for weeks while every monitor behind it was
   `not_monitored`. A status page that cannot go red is worse than none.
   Kirimi will be the first production user (dogfood), replacing Better Stack.
-- **Own brand, open source, global audience [owner].** Name **Edgebeat**
+- **Own brand, open source, global audience [owner].** Name **Upflare**
   ("heartbeat from the edge"). Not a Kirimi-branded tool; Kirimi is just a user.
 - **Why another one.** Prior art on Cloudflare (UptimeFlare ~3.9k★, active;
   cf-workers-status-page ~2.8k★, stale since 2024) leaves clear gaps:
@@ -35,7 +35,7 @@ owner may override. Unmarked = derived from research or constraints.
   intervals without ever silently stopping.
 - When something is down, the status page is red and an alert fires. A status
   page that cannot go red must be impossible by design (see §6.4 "self-watch").
-- `status.kirimi.id` runs on Edgebeat.
+- `status.kirimi.id` runs on Upflare.
 
 ### Goals (v1)
 - HTTP(S), keyword and TCP checks from Cloudflare's edge.
@@ -72,7 +72,7 @@ owner may override. Unmarked = derived from research or constraints.
 
 | Limit | Free | Paid ($5) | Impact |
 |---|---|---|---|
-| Cron triggers | 5 / account | 250 | Edgebeat uses exactly **1** (`* * * * *`). |
+| Cron triggers | 5 / account | 250 | Upflare uses exactly **1** (`* * * * *`). |
 | Cron CPU / invocation | 10 ms | 30 s | fetch/I/O wait does not count; JSON + DB work does. |
 | Cron wall clock | 15 min | 15 min | Fine. |
 | Subrequests / invocation | 50 | 10,000 | Hard cap on checks + alerts per tick. |
@@ -97,7 +97,7 @@ Durable Objects, Email Service, Deploy Buttons, Static Assets.
 One Worker, one D1 database, static assets. Nothing else required.
 
 ```
-                ┌──────────────── Edgebeat Worker ────────────────┐
+                ┌──────────────── Upflare Worker ────────────────┐
 cron * * * * *  │ scheduled(): scheduler → checker → evaluator →   │
 ───────────────▶│              alerter → writer                    │
                 │                                                  │
@@ -137,7 +137,7 @@ HTTP            │ fetch(): Hono router                              │
   optional **keyword** must/must-not appear in body (first 64 KB only).
 - **TCP**: host + port via `cloudflare:sockets` `connect()`; success = socket
   opens within timeout.
-- **Heartbeat**: Edgebeat gives a secret URL `/beat/:token`. The monitored job
+- **Heartbeat**: Upflare gives a secret URL `/beat/:token`. The monitored job
   calls it (GET or POST). Down when no beat within `period + grace`.
   Optional `/beat/:token/fail` to report an explicit failure.
 
@@ -244,8 +244,8 @@ green.
   when `now − last_tick_at > 3 min`, and stops showing green for
   monitors whose last check is older than `3 × interval` (shown as
   "unknown", grey).
-- Optional: a **dead-man's switch** — Edgebeat pings an external heartbeat
-  URL (e.g. a second Edgebeat on another account, or healthchecks.io) each
+- Optional: a **dead-man's switch** — Upflare pings an external heartbeat
+  URL (e.g. a second Upflare on another account, or healthchecks.io) each
   tick, so the monitor itself is monitored. Setting in admin.
 - Paused monitors are listed as "paused", never green.
 
@@ -274,7 +274,7 @@ traffic spike on the status page must never silence monitoring.
 ## 7. Alerts
 
 Channels v1: Telegram (bot token + chat id), Discord webhook, Slack webhook,
-generic webhook (JSON body, `X-Edgebeat-Signature` HMAC-SHA256).
+generic webhook (JSON body, `X-Upflare-Signature` HMAC-SHA256).
 
 Email is **optional and off by default** [call]: it needs Email Routing on a
 domain and a verified destination, which a fresh one-click user won't have.
@@ -362,9 +362,9 @@ Channel secrets are stored encrypted in D1 (AES-GCM, key from the
 
 ## 12. Repo and project
 
-- Location: `~/Dev/edgebeat` [owner]. Single package.
-- GitHub: `yolkmonday/edgebeat` (public) [owner, 2026-11-09]; org `edgebeat-dev` may come later.
-- Docs site / domain: `edgebeat.sh` [owner]. `.com/.dev/.io/.app` are
+- Location: `~/Dev/upflare` [owner]. Single package.
+- GitHub: `yolkmonday/upflare` (public) [owner, 2026-11-09]; org `upflare-dev` may come later.
+- Docs site / domain: `upflare.sh` [owner]. `.com/.dev/.io/.app` are
   registered by someone else (all at IONOS, possible future name conflict).
 - License: MIT [owner].
 - README, CONTRIBUTING, SECURITY, screenshots, demo deployment (Kirimi's page
@@ -412,7 +412,7 @@ Kept outside the public repo.
 - **Usage numbers** (Plan 3): D1 writes and Worker requests today come from
   the Cloudflare GraphQL Analytics API only when the optional `CF_ACCOUNT_ID`
   + `CF_API_TOKEN` (Account Analytics: Read) secrets are set (cached 300 s).
-  Otherwise D1 writes are an estimate of Edgebeat's own writes (ticks today
+  Otherwise D1 writes are an estimate of Upflare's own writes (ticks today
   are derived from the last tick, not counted) and requests are "Not
   tracked". The overview says whether analytics is ok, failed or off. No
   per-request counter: it would spend the write budget it reports. (§6.5)

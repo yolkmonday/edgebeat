@@ -86,7 +86,7 @@ const CheckDone = ({ monitor }: { monitor: Monitor }) => {
       ) : (
         <Heading
           title={`${monitor.name} didn't pass its first check`}
-          body={`${check.error ? `${errorLabel(check.error)}. ` : ""}Edgebeat keeps checking. It turns Down only after ${monitor.confirmations} failures in a row.`}
+          body={`${check.error ? `${errorLabel(check.error)}. ` : ""}Upflare keeps checking. It turns Down only after ${monitor.confirmations} failures in a row.`}
         />
       )}
       <div className="w-full overflow-hidden rounded-lg border border-border text-left">

@@ -1,10 +1,10 @@
 {
-  "name": "edgebeat",
+  "name": "upflare",
   "version": "0.1.0",
-  "description": "Install and update Edgebeat, an uptime monitor on one Cloudflare Worker.",
+  "description": "Install and update Upflare, an uptime monitor on one Cloudflare Worker.",
   "license": "MIT",
   "type": "module",
-  "bin": { "edgebeat": "dist/bin.js" },
+  "bin": { "upflare": "dist/bin.js" },
   "exports": { "./installer": "./dist/installer/index.js" },
   "files": ["dist", "bundle", "LICENSE"],
   "engines": { "node": ">=20" },

@@ -1,7 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-const BASE = "https://edgebeat.test";
+const BASE = "https://upflare.test";
 
 describe("admin spa fallback", () => {
   it("serves the SPA shell with security headers at /admin and on deep links", async () => {

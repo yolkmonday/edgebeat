@@ -11,7 +11,7 @@ let out = "";
 let manifest: ReleaseManifest;
 
 beforeAll(async () => {
-  out = await mkdtemp(join(tmpdir(), "edgebeat-build-test-"));
+  out = await mkdtemp(join(tmpdir(), "upflare-build-test-"));
   manifest = await buildBundle(repoRoot, out);
 }, 240_000);
 

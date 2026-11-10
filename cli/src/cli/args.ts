@@ -22,10 +22,10 @@ const VALUE_FLAGS = {
 
 export const VALID_FLAGS = [...Object.keys(VALUE_FLAGS), "--yes", "--version", "--help"];
 
-export const USAGE = `Usage: edgebeat <command> [flags]
+export const USAGE = `Usage: upflare <command> [flags]
 
 Commands:
-  setup      Install Edgebeat on your Cloudflare account
+  setup      Install Upflare on your Cloudflare account
   update     Update an existing install (secrets and data are kept)
   help       Show this help
   --version  Print the CLI version
@@ -34,7 +34,7 @@ Flags:
   --api-token <token>      Cloudflare API token. Prefer CLOUDFLARE_API_TOKEN: flags
                            are visible in ps and shell history
   --account <id>           Cloudflare account id (asked when you have several)
-  --name <name>            Worker and database name (default: edgebeat)
+  --name <name>            Worker and database name (default: upflare)
   --admin-password <p>     setup only: admin password, at least 12 characters
                            (generated if empty)
   --subdomain <s>          setup only: workers.dev subdomain, used only if the
@@ -87,7 +87,7 @@ export const parseArgs = (argv: string[]): ParseResult => {
       command: command ?? "help",
       apiToken: values.apiToken,
       account: values.account,
-      name: values.name ?? "edgebeat",
+      name: values.name ?? "upflare",
       adminPassword: values.adminPassword,
       subdomain: values.subdomain,
       yes,

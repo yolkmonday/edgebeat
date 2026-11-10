@@ -72,7 +72,7 @@ export const fetchUsage = async (env: Env, now: number): Promise<CfUsage | null>
   const startOfDay = new Date(now);
   startOfDay.setUTCHours(0, 0, 0, 0);
   const day = startOfDay.toISOString().slice(0, 10);
-  const key = new Request(`https://edgebeat.internal/usage/${encodeURIComponent(account)}/${day}`);
+  const key = new Request(`https://upflare.internal/usage/${encodeURIComponent(account)}/${day}`);
   const remember = (c: Cached, maxAge: number) =>
     caches.default
       .put(key, new Response(JSON.stringify(c), { headers: { "Cache-Control": `max-age=${maxAge}` } }))

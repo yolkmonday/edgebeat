@@ -40,7 +40,7 @@ const v010 = bundle("0.1.0", [
 
 const baseOpts = (events: InstallEvent[], over: Partial<InstallOptions> = {}): InstallOptions => ({
   accountId: "acc",
-  name: "edgebeat",
+  name: "upflare",
   source: "cli",
   onEvent: (e) => events.push(e),
   pollIntervalMs: 1,
@@ -60,13 +60,13 @@ const caught = async (p: Promise<unknown>): Promise<{ code: string; message: str
 
 const sourceBinding = (source: string): ScriptBinding => ({
   type: "plain_text",
-  name: "EDGEBEAT_INSTALL_SOURCE",
+  name: "UPFLARE_INSTALL_SOURCE",
   text: source,
 });
 
 const versionBinding = (version: string): ScriptBinding => ({
   type: "plain_text",
-  name: "EDGEBEAT_VERSION",
+  name: "UPFLARE_VERSION",
   text: version,
 });
 
@@ -75,10 +75,10 @@ const installedState = (
 ): Partial<FakeState> => ({
   subdomain: "acme",
   d1: [
-    { uuid: "u1", name: "edgebeat", migrations: over.migrations ?? ["0000_init.sql", "0001_more.sql"], executed: [] },
+    { uuid: "u1", name: "upflare", migrations: over.migrations ?? ["0000_init.sql", "0001_more.sql"], executed: [] },
   ],
   scripts: {
-    edgebeat: fakeScript({
+    upflare: fakeScript({
       version: over.version ?? "0.1.0",
       workersDev: true,
       crons: ["* * * * *"],
@@ -120,11 +120,11 @@ describe("install", () => {
 
     const { state } = api;
     expect(state.subdomain).toBe("acme");
-    expect(state.d1.map((d) => d.name)).toEqual(["edgebeat"]);
+    expect(state.d1.map((d) => d.name)).toEqual(["upflare"]);
     const db = state.d1[0];
     expect(db?.migrations).toEqual(["0000_init.sql", "0001_more.sql"]);
 
-    const script = state.scripts.edgebeat;
+    const script = state.scripts.upflare;
     expect(script?.version).toBe("0.1.0");
     expect(script?.bindings).toEqual([
       { type: "d1", name: "DB", id: db?.uuid ?? "" },
@@ -132,14 +132,14 @@ describe("install", () => {
       sourceBinding("cli"),
       versionBinding("0.1.0"),
     ]);
-    expect(script?.assetsJwt).toBe("jwt-edgebeat");
+    expect(script?.assetsJwt).toBe("jwt-upflare");
     expect(script?.crons).toEqual(["* * * * *"]);
     expect(script?.workersDev).toBe(true);
     expect(Object.keys(script?.secrets ?? {}).sort()).toEqual(["ADMIN_PASSWORD", "ENCRYPTION_KEY"]);
     expect(atob(script?.secrets.ENCRYPTION_KEY ?? "").length).toBe(32);
 
-    expect(result.statusUrl).toBe("https://edgebeat.acme.workers.dev/");
-    expect(result.adminUrl).toBe("https://edgebeat.acme.workers.dev/admin");
+    expect(result.statusUrl).toBe("https://upflare.acme.workers.dev/");
+    expect(result.adminUrl).toBe("https://upflare.acme.workers.dev/admin");
     expect(result.version).toBe("0.1.0");
     expect(result.generatedPassword).toHaveLength(24);
     expect(script?.secrets.ADMIN_PASSWORD).toBe(result.generatedPassword ?? "");
@@ -150,16 +150,16 @@ describe("install", () => {
   test("uses a given admin password and reports none generated", async () => {
     const api = createFakeApi({ subdomain: "acme" });
     const result = await install(api, v010, baseOpts([], { adminPassword: "a-strong-password" }));
-    expect(api.state.scripts.edgebeat?.secrets.ADMIN_PASSWORD).toBe("a-strong-password");
+    expect(api.state.scripts.upflare?.secrets.ADMIN_PASSWORD).toBe("a-strong-password");
     expect(result.generatedPassword).toBeNull();
   });
 
   test("resumes after partial install", async () => {
     const api = createFakeApi({
       subdomain: "acme",
-      d1: [{ uuid: "u1", name: "edgebeat", migrations: ["0000_init.sql"], executed: [] }],
+      d1: [{ uuid: "u1", name: "upflare", migrations: ["0000_init.sql"], executed: [] }],
       scripts: {
-        edgebeat: fakeScript({
+        upflare: fakeScript({
           version: "0.1.0",
           workersDev: true,
           bindings: [sourceBinding("cli")],
@@ -177,7 +177,7 @@ describe("install", () => {
     expect(migrationRuns(state.d1[0])).toEqual([
       "CREATE TABLE `events` (`id` text);\nINSERT INTO d1_migrations (name) VALUES ('0001_more.sql');",
     ]);
-    const secrets = state.scripts.edgebeat?.secrets;
+    const secrets = state.scripts.upflare?.secrets;
     expect(secrets?.ENCRYPTION_KEY).toBe("existing-key");
     const secretWrites = state.writes.filter((w) => w.method === "putSecret").map((w) => w.args[2]);
     expect(secretWrites).toEqual(["ADMIN_PASSWORD"]);
@@ -187,7 +187,7 @@ describe("install", () => {
   });
 
   test("refuses foreign worker with same name", async () => {
-    const api = createFakeApi({ subdomain: "acme", scripts: { edgebeat: fakeScript() } });
+    const api = createFakeApi({ subdomain: "acme", scripts: { upflare: fakeScript() } });
     const events: InstallEvent[] = [];
     const err = await caught(install(api, v010, baseOpts(events)));
     expect(err.code).toBe("name_taken");
@@ -196,7 +196,7 @@ describe("install", () => {
   });
 
   test("refuses an existing worker when there is no subdomain to check it", async () => {
-    const api = createFakeApi({ scripts: { edgebeat: fakeScript() } });
+    const api = createFakeApi({ scripts: { upflare: fakeScript() } });
     expect((await caught(install(api, v010, baseOpts([], { subdomain: "acme" })))).code).toBe("name_taken");
     expect(api.state.writes).toEqual([]);
   });
@@ -209,7 +209,7 @@ describe("install", () => {
 
   test("refuses a git managed install even when secrets are missing", async () => {
     const seed = installedState({ source: "git" });
-    const script = seed.scripts?.edgebeat;
+    const script = seed.scripts?.upflare;
     if (script) script.secrets = {};
     const api = createFakeApi(seed);
     expect((await caught(install(api, v010, baseOpts([])))).code).toBe("already_installed");
@@ -246,7 +246,7 @@ describe("install", () => {
   test("d1 limit does not apply when the database already exists", async () => {
     const d1 = Array.from({ length: 10 }, (_, i): FakeD1 => ({
       uuid: `d${i}`,
-      name: i === 0 ? "edgebeat" : `db${i}`,
+      name: i === 0 ? "upflare" : `db${i}`,
       migrations: null,
       executed: [],
     }));
@@ -266,7 +266,7 @@ describe("install", () => {
       status: "done",
       detail: warning,
     });
-    expect(api.state.scripts.edgebeat?.version).toBe("0.1.0");
+    expect(api.state.scripts.upflare?.version).toBe("0.1.0");
   });
 
   test("missing token permission stops before changes and names it", async () => {
@@ -298,7 +298,7 @@ describe("install", () => {
     const events: InstallEvent[] = [];
     const result = await install(api, v010, baseOpts(events));
     expect(result.warnings).toEqual([
-      "Installed, but https://edgebeat.acme.workers.dev/ still answers with version 0.0.9 instead of 0.1.0. It can take a minute to switch: reload it later.",
+      "Installed, but https://upflare.acme.workers.dev/ still answers with version 0.0.9 instead of 0.1.0. It can take a minute to switch: reload it later.",
     ]);
     expect(events.at(-1)).toMatchObject({ step: "health", status: "skip" });
   });
@@ -311,7 +311,7 @@ describe("install", () => {
     const err = await install(api, v010, baseOpts([])).catch((e: unknown) => e);
     const generated = (err as { generatedPassword?: string }).generatedPassword;
     expect(generated).toMatch(/^[A-Za-z0-9]{24}$/);
-    expect(api.state.scripts.edgebeat?.secrets.ADMIN_PASSWORD).toBe(generated ?? "");
+    expect(api.state.scripts.upflare?.secrets.ADMIN_PASSWORD).toBe(generated ?? "");
   });
 
   test("health polls until the new version answers", async () => {
@@ -328,7 +328,7 @@ describe("install", () => {
     }, 20);
     await pending;
     expect(urls.length).toBeGreaterThan(1);
-    expect(await real("https://edgebeat.acme.workers.dev/api/v1/health")).toMatchObject({ version: "0.1.0" });
+    expect(await real("https://upflare.acme.workers.dev/api/v1/health")).toMatchObject({ version: "0.1.0" });
   });
 
   test("an api failure emits a fail event and rethrows", async () => {
@@ -362,7 +362,7 @@ describe("update", () => {
     expect(migrationRuns(state.d1[0])).toEqual([
       "ALTER TABLE `monitors` ADD `note` text;\nINSERT INTO d1_migrations (name) VALUES ('0001_x.sql');",
     ]);
-    const script = state.scripts.edgebeat;
+    const script = state.scripts.upflare;
     expect(script?.secrets).toEqual({ ENCRYPTION_KEY: "existing-key", ADMIN_PASSWORD: "existing-password" });
     expect(state.writes.some((w) => w.method === "putSecret" || w.method === "createD1")).toBe(false);
     const put = state.writes.find((w) => w.method === "putScript");
@@ -377,8 +377,8 @@ describe("update", () => {
     });
     expect(script?.version).toBe("0.2.0");
     expect(result).toEqual({
-      statusUrl: "https://edgebeat.acme.workers.dev/",
-      adminUrl: "https://edgebeat.acme.workers.dev/admin",
+      statusUrl: "https://upflare.acme.workers.dev/",
+      adminUrl: "https://upflare.acme.workers.dev/admin",
       version: "0.2.0",
       generatedPassword: null,
       warnings: [],
@@ -403,7 +403,7 @@ describe("update", () => {
   });
 
   test("update on a foreign worker fails with not_installed", async () => {
-    const api = createFakeApi({ subdomain: "acme", scripts: { edgebeat: fakeScript() } });
+    const api = createFakeApi({ subdomain: "acme", scripts: { upflare: fakeScript() } });
     expect((await caught(update(api, v020, updateOpts([])))).code).toBe("not_installed");
     expect(api.state.writes).toEqual([]);
   });
@@ -422,7 +422,7 @@ describe("resume and safety guards", () => {
     const { adminPassword: _a, subdomain: _s, ...rest } = baseOpts(events, over);
     return rest;
   };
-  const NEWER = "This Edgebeat (schema 0002_future.sql) is newer than this installer (0.1.0). Use a newer edgebeat.";
+  const NEWER = "This Upflare (schema 0002_future.sql) is newer than this installer (0.1.0). Use a newer upflare.";
 
   test("a cron limit after the upload leaves a reachable install that update can finish", async () => {
     const api = createFakeApi({ subdomain: "acme" });
@@ -431,12 +431,12 @@ describe("resume and safety guards", () => {
       throw makeInstallError("limit_cron", "This account has no free cron trigger left.");
     };
     expect((await caught(install(api, v010, baseOpts([])))).code).toBe("limit_cron");
-    expect(api.state.scripts.edgebeat?.workersDev).toBe(true);
+    expect(api.state.scripts.upflare?.workersDev).toBe(true);
 
     api.putSchedules = putSchedules;
     expect((await caught(install(api, v010, baseOpts([])))).code).toBe("already_installed");
     await update(api, v010, updateOpts([]));
-    expect(api.state.scripts.edgebeat?.crons).toEqual(["* * * * *"]);
+    expect(api.state.scripts.upflare?.crons).toEqual(["* * * * *"]);
   });
 
   test("route step still re-asserts workers.dev after the script step enabled it", async () => {
@@ -451,18 +451,18 @@ describe("resume and safety guards", () => {
   test("refuses a foreign d1 with the same name before changes", async () => {
     const api = createFakeApi({
       subdomain: "acme",
-      d1: [{ uuid: "f1", name: "edgebeat", migrations: null, executed: [], tables: ["_cf_KV", "customers"] }],
+      d1: [{ uuid: "f1", name: "upflare", migrations: null, executed: [], tables: ["_cf_KV", "customers"] }],
     });
     const err = await caught(install(api, v010, baseOpts([])));
     expect(err.code).toBe("name_taken");
-    expect(err.message).toContain('D1 database named "edgebeat"');
+    expect(err.message).toContain('D1 database named "upflare"');
     expect(api.state.writes).toEqual([]);
   });
 
   test("reuses an empty d1 with the same name", async () => {
     const api = createFakeApi({
       subdomain: "acme",
-      d1: [{ uuid: "e1", name: "edgebeat", migrations: null, executed: [], tables: ["_cf_KV", "sqlite_sequence"] }],
+      d1: [{ uuid: "e1", name: "upflare", migrations: null, executed: [], tables: ["_cf_KV", "sqlite_sequence"] }],
     });
     await install(api, v010, baseOpts([]));
     expect(api.state.d1.map((d) => d.uuid)).toEqual(["e1"]);
@@ -472,8 +472,8 @@ describe("resume and safety guards", () => {
   test("setup resume refuses a database newer than the installer", async () => {
     const api = createFakeApi({
       subdomain: "acme",
-      d1: [{ uuid: "u1", name: "edgebeat", migrations: ["0000_init.sql", "0002_future.sql"], executed: [] }],
-      scripts: { edgebeat: fakeScript({ version: "0.3.0", workersDev: true, bindings: [sourceBinding("cli")] }) },
+      d1: [{ uuid: "u1", name: "upflare", migrations: ["0000_init.sql", "0002_future.sql"], executed: [] }],
+      scripts: { upflare: fakeScript({ version: "0.3.0", workersDev: true, bindings: [sourceBinding("cli")] }) },
     });
     expect(await caught(install(api, v010, baseOpts([])))).toEqual({ code: "api_error", message: NEWER });
     expect(api.state.writes).toEqual([]);
@@ -488,14 +488,14 @@ describe("resume and safety guards", () => {
   test("update keeps the recorded install source", async () => {
     const api = createFakeApi(installedState({ source: "cloud" }));
     await update(api, v010, updateOpts([], { source: "cli" }));
-    expect(api.state.scripts.edgebeat?.bindings).toContainEqual(sourceBinding("cloud"));
+    expect(api.state.scripts.upflare?.bindings).toContainEqual(sourceBinding("cloud"));
   });
 
   test("a given password does not replace an existing one and says so", async () => {
     const api = createFakeApi({
       subdomain: "acme",
       scripts: {
-        edgebeat: fakeScript({
+        upflare: fakeScript({
           version: "0.1.0",
           workersDev: true,
           bindings: [sourceBinding("cli")],
@@ -505,7 +505,7 @@ describe("resume and safety guards", () => {
     });
     const events: InstallEvent[] = [];
     const result = await install(api, v010, baseOpts(events, { adminPassword: "a-strong-password" }));
-    expect(api.state.scripts.edgebeat?.secrets.ADMIN_PASSWORD).toBe("existing-password");
+    expect(api.state.scripts.upflare?.secrets.ADMIN_PASSWORD).toBe("existing-password");
     expect(result.generatedPassword).toBeNull();
     const done = events.find((e) => e.step === "secrets" && e.status === "done");
     expect(done && "detail" in done ? done.detail : "").toContain("admin password already set — kept");
@@ -518,16 +518,16 @@ describe("final review: identity via the Cloudflare API (R13)", () => {
     return rest;
   };
   const UNREACHABLE =
-    "Installed, but workers.dev isn't reachable from this network — open https://edgebeat.acme.workers.dev/ in a browser or try another network.";
+    "Installed, but workers.dev isn't reachable from this network — open https://upflare.acme.workers.dev/ in a browser or try another network.";
 
   test("workers.dev unreachable: install still succeeds with a warning", async () => {
     const api = createFakeApi({ subdomain: "acme", healthOverride: () => null });
     const events: InstallEvent[] = [];
     const result = await install(api, v010, baseOpts(events));
     expect(result.warnings).toEqual([UNREACHABLE]);
-    expect(result.statusUrl).toBe("https://edgebeat.acme.workers.dev/");
+    expect(result.statusUrl).toBe("https://upflare.acme.workers.dev/");
     expect(events.at(-1)).toEqual({ step: "health", status: "skip", detail: "workers.dev not reachable from here" });
-    expect(api.state.scripts.edgebeat?.crons).toEqual(["* * * * *"]);
+    expect(api.state.scripts.upflare?.crons).toEqual(["* * * * *"]);
   });
 
   test("workers.dev unreachable: a complete install is still recognised as already installed", async () => {
@@ -535,14 +535,14 @@ describe("final review: identity via the Cloudflare API (R13)", () => {
     const err = await caught(install(api, v010, baseOpts([])));
     expect(err).toEqual({
       code: "already_installed",
-      message: 'Edgebeat 0.1.0 is already installed as "edgebeat". Use update to upgrade it.',
+      message: 'Upflare 0.1.0 is already installed as "upflare". Use update to upgrade it.',
     });
     expect(api.state.writes).toEqual([]);
   });
 
   test("workers.dev unreachable: setup resumes our own partial install", async () => {
     const seed = installedState();
-    const script = seed.scripts?.edgebeat;
+    const script = seed.scripts?.upflare;
     if (script) script.secrets = { ENCRYPTION_KEY: "existing-key" };
     const api = createFakeApi({ ...seed, healthOverride: () => null });
     const result = await install(api, v010, baseOpts([]));
@@ -554,13 +554,13 @@ describe("final review: identity via the Cloudflare API (R13)", () => {
     const api = createFakeApi({ ...installedState({ source: "cloud" }), healthOverride: () => null });
     const result = await update(api, v010, updateOpts([], { source: "cli" }));
     expect(result.warnings).toEqual([UNREACHABLE.replace("Installed", "Updated")]);
-    expect(api.state.scripts.edgebeat?.bindings).toContainEqual(sourceBinding("cloud"));
+    expect(api.state.scripts.upflare?.bindings).toContainEqual(sourceBinding("cloud"));
   });
 
-  test("a worker without the source binding is foreign even if health claims Edgebeat", async () => {
+  test("a worker without the source binding is foreign even if health claims Upflare", async () => {
     const api = createFakeApi({
       subdomain: "acme",
-      scripts: { edgebeat: fakeScript({ version: "0.1.0", workersDev: true }) },
+      scripts: { upflare: fakeScript({ version: "0.1.0", workersDev: true }) },
       healthOverride: () => ({ ok: true, version: "0.1.0", installSource: "cli" }),
     });
     expect((await caught(install(api, v010, baseOpts([])))).code).toBe("name_taken");
@@ -574,15 +574,15 @@ describe("final review: identity via the Cloudflare API (R13)", () => {
     expect(api.state.writes).toEqual([]);
   });
 
-  test("an install from before EDGEBEAT_VERSION (no version binding) still updates", async () => {
+  test("an install from before UPFLARE_VERSION (no version binding) still updates", async () => {
     const seed = installedState();
-    const script = seed.scripts?.edgebeat;
-    if (script) script.bindings = script.bindings.filter((b) => b.name !== "EDGEBEAT_VERSION");
+    const script = seed.scripts?.upflare;
+    if (script) script.bindings = script.bindings.filter((b) => b.name !== "UPFLARE_VERSION");
     const api = createFakeApi(seed);
     const events: InstallEvent[] = [];
     await update(api, v010, updateOpts(events));
     expect(events.find((e) => e.step === "verify" && e.status === "done")).toMatchObject({ detail: "installed version unknown" });
-    expect(api.state.scripts.edgebeat?.bindings).toContainEqual(versionBinding("0.1.0"));
+    expect(api.state.scripts.upflare?.bindings).toContainEqual(versionBinding("0.1.0"));
   });
 });
 
@@ -591,7 +591,7 @@ describe("final review: code downgrade guard (R18)", () => {
     const { adminPassword: _a, subdomain: _s, ...rest } = baseOpts(events);
     return rest;
   };
-  const NEWER_CODE = "This Edgebeat (v0.10.0) is newer than this installer (v0.9.0). Run bunx edgebeat@latest update.";
+  const NEWER_CODE = "This Upflare (v0.10.0) is newer than this installer (v0.9.0). Run bunx upflare@latest update.";
   const v090 = bundle("0.9.0", v010.migrations);
 
   test("update refuses installed code newer than the bundle, zero writes", async () => {
@@ -602,7 +602,7 @@ describe("final review: code downgrade guard (R18)", () => {
 
   test("setup resume refuses installed code newer than the bundle, zero writes", async () => {
     const seed = installedState({ version: "0.10.0" });
-    const script = seed.scripts?.edgebeat;
+    const script = seed.scripts?.upflare;
     if (script) script.secrets = {};
     const api = createFakeApi(seed);
     expect(await caught(install(api, v090, baseOpts([])))).toEqual({ code: "api_error", message: NEWER_CODE });
@@ -621,7 +621,7 @@ describe("final review: code downgrade guard (R18)", () => {
     const api = createFakeApi(installedState({ version: "1.0.0" }));
     const err = await caught(update(api, bundle("1.0.0-rc.1", v010.migrations), updateOpts([])));
     expect(err.message).toBe(
-      "This Edgebeat (v1.0.0) is newer than this installer (v1.0.0-rc.1). Run bunx edgebeat@latest update.",
+      "This Upflare (v1.0.0) is newer than this installer (v1.0.0-rc.1). Run bunx upflare@latest update.",
     );
   });
 });
@@ -655,7 +655,7 @@ describe("final review: token and password hooks (R15)", () => {
     const given = createFakeApi({ subdomain: "acme" });
     await install(given, v010, baseOpts([], { adminPassword: "a-strong-password", onGeneratedPassword: (p) => calls.push(p) }));
     const existing = createFakeApi(installedState());
-    const script = existing.state.scripts.edgebeat;
+    const script = existing.state.scripts.upflare;
     if (script) delete script.secrets.ENCRYPTION_KEY;
     await install(existing, v010, baseOpts([], { onGeneratedPassword: (p) => calls.push(p) }));
     expect(calls).toEqual([]);

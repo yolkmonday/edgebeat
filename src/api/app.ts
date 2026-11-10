@@ -22,7 +22,7 @@ const parseInstallSource = (value: string | undefined) =>
   INSTALL_SOURCES.find((source) => source === value) ?? null;
 
 app.get("/api/v1/health", (c) =>
-  c.json({ ok: true, version: VERSION, installSource: parseInstallSource(c.env.EDGEBEAT_INSTALL_SOURCE) }),
+  c.json({ ok: true, version: VERSION, installSource: parseInstallSource(c.env.UPFLARE_INSTALL_SOURCE) }),
 );
 app.route("/beat", beat);
 app.route("/api/v1", publicApi);

@@ -1,4 +1,4 @@
-# Edgebeat
+# Upflare
 
 Open-source uptime monitor and public status page that runs as a single Cloudflare Worker (Hono, D1 via Drizzle, Workers Static Assets). A cron trigger runs checks every minute; the status page is a static page that reads `GET /api/v1/status`.
 
@@ -16,11 +16,11 @@ Three paths, in order of effort. All of them need a Cloudflare account. Today on
 
 ### 1. CLI (coming soon — not yet published)
 
-The `edgebeat` package is not on npm yet, so this command does not work today.
+The `upflare` package is not on npm yet, so this command does not work today.
 
 ```sh
 export CLOUDFLARE_API_TOKEN=...   # preferred over --api-token, which shows up in ps and shell history
-bunx edgebeat setup
+bunx upflare setup
 ```
 
 The CLI reads the token from `CLOUDFLARE_API_TOKEN` (or asks for it, hidden) and installs the Worker, its D1 database and secrets. Create the token with these permissions:
@@ -33,7 +33,7 @@ The token is never written to disk. The generated admin password is printed once
 
 ### 2. Deploy to Cloudflare button (coming soon — not yet verified)
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/yolkmonday/edgebeat)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/yolkmonday/upflare)
 
 Not yet verified end to end on a real account; use the manual path until it is. Requires a GitHub account (Cloudflare copies the repository into it). Updates by pulling upstream and redeploying.
 
@@ -46,7 +46,7 @@ bun install
 bunx wrangler login
 ```
 
-`wrangler.jsonc` has no `database_id`: the first deploy creates the `edgebeat` D1 database automatically. Set the secrets and deploy:
+`wrangler.jsonc` has no `database_id`: the first deploy creates the `upflare` D1 database automatically. Set the secrets and deploy:
 
 ```sh
 bunx wrangler secret put ADMIN_PASSWORD   # at least 12 characters; login is refused otherwise
@@ -82,11 +82,11 @@ Open `https://<your-worker>/admin` and sign in with `ADMIN_PASSWORD`. With no mo
 - **Password.** At least 12 characters and not `change-me`. To change or reset it, set a new `ADMIN_PASSWORD` secret (`bunx wrangler secret put ADMIN_PASSWORD`, or the Cloudflare dashboard) and sign in again. Sessions last 12 hours.
 - **Protect it.** The admin is a single password behind a rate-limited login. For anything public, put [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) in front of `/admin*` and `/api/admin/*`.
 - **Check budget.** A save that would raise the busiest minute above the budget (free plan: 40 checks per minute) is refused with `409 budget_exceeded`. Edits that don't raise it always save.
-- **Usage numbers.** The overview shows checks per minute, D1 writes and Worker requests today. Without extra secrets, D1 writes are an estimate of Edgebeat's own writes and requests are not tracked. For real, account-wide numbers add two optional secrets: `CF_ACCOUNT_ID` and `CF_API_TOKEN` (a token with **Account Analytics: Read**). If the query fails, the overview says so and falls back to the estimate.
+- **Usage numbers.** The overview shows checks per minute, D1 writes and Worker requests today. Without extra secrets, D1 writes are an estimate of Upflare's own writes and requests are not tracked. For real, account-wide numbers add two optional secrets: `CF_ACCOUNT_ID` and `CF_API_TOKEN` (a token with **Account Analytics: Read**). If the query fails, the overview says so and falls back to the estimate.
 
 ### API tokens
 
-Create tokens in Settings → API tokens. A token is shown once; Edgebeat stores only its hash. Send it as a header:
+Create tokens in Settings → API tokens. A token is shown once; Upflare stores only its hash. Send it as a header:
 
 ```sh
 curl -H "Authorization: Bearer eb_..." https://<host>/api/admin/monitors
@@ -99,9 +99,9 @@ A `read` token may only `GET`; an `admin` token may change anything except token
 Settings → Backup exports monitors, groups and settings as JSON. The file has no ids, beat URLs, tokens or history, so it is safe to keep in git. Importing merges by slug: it creates and updates, and deletes nothing unless you tick "Delete monitors and groups that are not in the file". The admin always shows a dry-run summary first. Over the API:
 
 ```sh
-curl -H "Authorization: Bearer eb_..." https://<host>/api/admin/export > edgebeat.json
+curl -H "Authorization: Bearer eb_..." https://<host>/api/admin/export > upflare.json
 curl -H "Authorization: Bearer eb_..." -H 'content-type: application/json' \
-  --data @edgebeat.json "https://<host>/api/admin/import?dryRun=true"   # summary, no writes
+  --data @upflare.json "https://<host>/api/admin/import?dryRun=true"   # summary, no writes
 # add ?prune=true to delete what the file doesn't list; one import is all-or-nothing
 ```
 

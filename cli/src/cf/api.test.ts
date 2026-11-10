@@ -332,8 +332,8 @@ describe("final review fixes", () => {
       env({
         bindings: [
           { type: "d1", name: "DB", id: "u1" },
-          { type: "plain_text", name: "EDGEBEAT_INSTALL_SOURCE", text: "cloud" },
-          { type: "plain_text", name: "EDGEBEAT_VERSION", text: "0.2.0" },
+          { type: "plain_text", name: "UPFLARE_INSTALL_SOURCE", text: "cloud" },
+          { type: "plain_text", name: "UPFLARE_VERSION", text: "0.2.0" },
           { type: "secret_text", name: "ADMIN_PASSWORD" },
         ],
         compatibility_date: "2026-11-01",
@@ -349,7 +349,7 @@ describe("final review fixes", () => {
     expect(await harness(() => env({})).api.getScriptInfo("a1", "w")).toEqual({});
     expect(
       await harness(() =>
-        env({ bindings: [{ type: "plain_text", name: "EDGEBEAT_INSTALL_SOURCE", text: "nope" }] }),
+        env({ bindings: [{ type: "plain_text", name: "UPFLARE_INSTALL_SOURCE", text: "nope" }] }),
       ).api.getScriptInfo("a1", "w"),
     ).toEqual({});
     expect((await harness(() => fail(500, 1, "boom")).api.getScriptInfo("a1", "w").catch((e) => e)).code).toBe(

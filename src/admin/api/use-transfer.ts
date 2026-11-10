@@ -17,7 +17,7 @@ export const useExport = () =>
   useMutation({
     mutationFn: async () => {
       const blob = await api.download("/export");
-      saveBlob(blob, `edgebeat-config-${new Date().toISOString().slice(0, 10)}.json`);
+      saveBlob(blob, `upflare-config-${new Date().toISOString().slice(0, 10)}.json`);
     },
   });
 

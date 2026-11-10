@@ -8,7 +8,7 @@ import { hashToken } from "@/lib/api-tokens";
 import type { ApiToken, ApiTokenCreated } from "@/shared/admin-api";
 
 const db = getDb(env);
-const BASE = "https://edgebeat.test";
+const BASE = "https://upflare.test";
 
 const getCookie = async (): Promise<string> => {
   const res = await SELF.fetch(`${BASE}/api/admin/login`, {

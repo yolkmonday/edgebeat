@@ -30,9 +30,9 @@ describe("parseArgs", () => {
     });
   });
 
-  test("defaults name to edgebeat and command to help", () => {
+  test("defaults name to upflare and command to help", () => {
     const r = parseArgs([]);
-    expect(r.ok && r.args.name).toBe("edgebeat");
+    expect(r.ok && r.args.name).toBe("upflare");
     expect(r.ok && r.args.command).toBe("help");
   });
 

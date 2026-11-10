@@ -77,7 +77,7 @@ export type ApiTokenCreate = { name: string; scope: ApiTokenScope };
 export type ApiTokenCreated = ApiToken & { token: string };   // only time the plaintext exists
 
 export type ExportFile = {
-  edgebeat: 1; exportedAt: string;
+  upflare: 1; exportedAt: string;
   settings: { siteName: string; plan: Plan; checkBudget: number | null };
   groups: { slug: string; name: string; sort: number }[];
   monitors: (Omit<MonitorInput, "groupId"> & { group: string | null })[];   // group = group slug

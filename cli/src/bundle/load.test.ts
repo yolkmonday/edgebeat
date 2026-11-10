@@ -22,7 +22,7 @@ const manifest: ReleaseManifest = {
 };
 
 beforeAll(async () => {
-  dir = await mkdtemp(join(tmpdir(), "edgebeat-load-test-"));
+  dir = await mkdtemp(join(tmpdir(), "upflare-load-test-"));
   await mkdir(join(dir, "worker"), { recursive: true });
   await mkdir(join(dir, "assets", "assets"), { recursive: true });
   await mkdir(join(dir, "migrations"), { recursive: true });

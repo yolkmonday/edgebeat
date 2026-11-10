@@ -58,7 +58,7 @@ const resolveToken = async (args: Args, io: Io): Promise<string> => {
   if (args.yes) {
     throw usageError("No API token. Pass --api-token or set CLOUDFLARE_API_TOKEN (required with --yes).");
   }
-  io.print("Edgebeat needs a Cloudflare API token with these permissions:");
+  io.print("Upflare needs a Cloudflare API token with these permissions:");
   PERMISSIONS.forEach((p) => io.print(`  - ${p}`));
   io.print(`Create one at ${TOKEN_URL}`);
   const token = (await io.prompt("Paste your API token (input is hidden): ", { secret: true })).trim();
@@ -121,7 +121,7 @@ const createPasswordPrinter = (io: Io) => {
 const printResult = (io: Io, result: InstallResult, printPassword: (p: string | null) => void): void => {
   const c = makeColors(io.isTTY);
   io.print("");
-  io.print(c.bold(`Edgebeat ${result.version} is ready.`));
+  io.print(c.bold(`Upflare ${result.version} is ready.`));
   io.print(`Status page: ${result.statusUrl}`);
   io.print(`Admin:       ${result.adminUrl}`);
   printPassword(result.generatedPassword);

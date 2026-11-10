@@ -106,7 +106,7 @@ export const GeneralSettingsForm = ({ settings }: { settings: Settings }) => {
             </Field>
           </Section>
 
-          <Section title="Cloudflare plan" description="Pick the Workers plan your Cloudflare account is on. Edgebeat uses it to keep you inside the limits.">
+          <Section title="Cloudflare plan" description="Pick the Workers plan your Cloudflare account is on. Upflare uses it to keep you inside the limits.">
             <Controller
               control={control}
               name="plan"
@@ -116,7 +116,7 @@ export const GeneralSettingsForm = ({ settings }: { settings: Settings }) => {
             />
           </Section>
 
-          <Section title="Check budget" description="The most checks Edgebeat runs in one minute, across all monitors. New monitors that would go over it can't be saved.">
+          <Section title="Check budget" description="The most checks Upflare runs in one minute, across all monitors. New monitors that would go over it can't be saved.">
             <div className="max-w-80">
               {plan === "free" ? (
                 <Field

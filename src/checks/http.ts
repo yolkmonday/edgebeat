@@ -20,7 +20,7 @@ export type TakeSubrequest = () => boolean;
 const BODY_CAP = 65_536;
 const MAX_REDIRECTS = 5;
 const REDIRECT_CODES = new Set([301, 302, 303, 307, 308]);
-const USER_AGENT = "Edgebeat/1 (+https://edgebeat.sh)";
+const USER_AGENT = "Upflare/1 (+https://upflare.sh)";
 
 export const matchesStatus = (code: number, spec: string): boolean =>
   spec.split(",").some((part) => {

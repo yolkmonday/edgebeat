@@ -31,7 +31,7 @@ const UsageCard = ({ label, value, limit, meter, note, bad, numeric = true }: Us
 const d1SourceNote = (analytics: Overview["usage"]["analytics"], source: Overview["usage"]["d1WritesToday"]["source"]) => {
   if (source === "analytics") return " From Cloudflare analytics (whole account).";
   if (analytics === "failed") return " Estimated: the Cloudflare analytics query failed.";
-  return " Estimated from Edgebeat's own writes.";
+  return " Estimated from Upflare's own writes.";
 };
 
 const requestsMissingNote = (analytics: Overview["usage"]["analytics"]) =>
