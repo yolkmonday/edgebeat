@@ -6,7 +6,7 @@ import worker from "@/index";
 import type { PublicStatus } from "@/core/public-status";
 
 const db = getDb(env);
-const KEY = "https://edgebeat.test/api/v1/status";
+const KEY = "https://upflare.test/api/v1/status";
 // run through the worker with an execution context so the cache.put in waitUntil has settled on return
 const get = async (query = "") => {
   const ctx = createExecutionContext();

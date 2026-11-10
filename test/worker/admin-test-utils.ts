@@ -7,7 +7,7 @@ import { getDb } from "@/db/client";
 import * as t from "@/db/schema";
 
 export const db = getDb(env);
-export const BASE = "https://edgebeat.test";
+export const BASE = "https://upflare.test";
 
 export const getCookie = async (): Promise<string> => {
   const res = await SELF.fetch(`${BASE}/api/admin/login`, {

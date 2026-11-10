@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { duration } from "@/lib/format";
 import type { TickStatus } from "@/features/overview/tick-status";
 
-const WORKER_URL = "https://dash.cloudflare.com/?to=/:account/workers/services/view/edgebeat";
+const WORKER_URL = "https://dash.cloudflare.com/?to=/:account/workers/services/view/upflare";
 
 type Copy = { title: string; detail: string };
 

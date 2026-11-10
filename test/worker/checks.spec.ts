@@ -33,7 +33,7 @@ describe("runHttpCheck", () => {
     await runHttpCheck({ ...base, followRedirects: false }, 2000);
     const init = spy.mock.calls[0]![1]!;
     expect(init.redirect).toBe("manual");
-    expect(new Headers(init.headers as Record<string, string>).get("user-agent")).toBe("Edgebeat/1 (+https://edgebeat.sh)");
+    expect(new Headers(init.headers as Record<string, string>).get("user-agent")).toBe("Upflare/1 (+https://upflare.sh)");
   });
 
   it("status mismatch", async () => {

@@ -13,7 +13,7 @@ import {
 } from "../contracts";
 
 export type FakeScript = {
-  version: string | null; // code version health answers with; null = a foreign (non-Edgebeat) worker
+  version: string | null; // code version health answers with; null = a foreign (non-Upflare) worker
   bindings: ScriptBinding[];
   secrets: Record<string, string>;
   crons: string[];

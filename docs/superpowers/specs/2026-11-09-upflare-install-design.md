@@ -1,8 +1,8 @@
-# Edgebeat — Install Design
+# Upflare — Install Design
 
 Date: 2026-11-09
 Status: approved by owner 2026-11-09; implemented by Plan A on `feat/install-plan-a` (CLI, installer core, release bundle, button prep), pending owner verification on a real account
-Builds on: `2026-11-09-edgebeat-design.md` (Plan 1 merged to `main` at `fa2fb60`).
+Builds on: `2026-11-09-upflare-design.md` (Plan 1 merged to `main` at `fa2fb60`).
 
 Marked **[owner]** = decided by the owner in conversation. Marked **[call]** =
 Claude's call, owner may override. Unmarked = from research or constraints.
@@ -11,7 +11,7 @@ Claude's call, owner may override. Unmarked = from research or constraints.
 
 ## 1. Intent and why
 
-Edgebeat runs on the user's own Cloudflare account. Today the only install
+Upflare runs on the user's own Cloudflare account. Today the only install
 path is the README's manual steps: create a D1, put its id in
 `wrangler.jsonc`, generate secrets, run migrations, deploy. That stops anyone
 who does not write code, and slows down everyone who does.
@@ -25,12 +25,12 @@ The owner wants two audiences served from day one **[owner]**:
    repo, with full control and no dependency on the hosted dashboard.
 
 The hosted dashboard is **only an installer ("tukang pasang") [owner]**. After
-install, the user manages monitors in the admin of their own Edgebeat
+install, the user manages monitors in the admin of their own Upflare
 Worker. The dashboard never becomes the place where monitoring lives.
 
 ### Success looks like
 - A non-technical person goes from "Get started" on the dashboard to an
-  installed Edgebeat with its status page URL in under 5 minutes, without
+  installed Upflare with its status page URL in under 5 minutes, without
   creating an API token by hand.
 - A developer runs one command and gets the same result.
 - A developer with a GitHub account can click "Deploy to Cloudflare" in the
@@ -38,11 +38,11 @@ Worker. The dashboard never becomes the place where monitoring lives.
 - All three paths produce the **same** installation (same Worker name
   pattern, same D1, same secrets, same migrations), so docs and support are
   written once.
-- An installed Edgebeat keeps working if the hosted installer (`yolkwork.co/edgebeat`) is
+- An installed Upflare keeps working if the hosted installer (`yolkwork.co/upflare`) is
   down or disappears forever.
 
 ### Goals
-- One shared **installer core** that installs and updates Edgebeat in a
+- One shared **installer core** that installs and updates Upflare in a
   Cloudflare account through the Cloudflare REST API.
 - **CLI** for developers, built on the installer core.
 - **Deploy to Cloudflare button** in the README.
@@ -61,7 +61,7 @@ Worker. The dashboard never becomes the place where monitoring lives.
 
 ### Anti-goals (failure even if it "works")
 - The dashboard **keeps standing access** to users' Cloudflare accounts.
-- An installed Edgebeat **depends on** the hosted installer at
+- An installed Upflare **depends on** the hosted installer at
   runtime.
 - The three paths drift and produce different installations.
 - Install half-fails and leaves the user with a broken Worker and no clear
@@ -94,7 +94,7 @@ Worker. The dashboard never becomes the place where monitoring lives.
   D1 create + D1 query API for migrations, script secrets API, schedules API,
   account workers.dev subdomain API. Wrangler has no programmatic deploy API.
 - **Free-plan limits that can block an install**: 5 cron triggers per
-  account (Edgebeat uses 1), 100 Workers, 10 D1 databases, workers.dev
+  account (Upflare uses 1), 100 Workers, 10 D1 databases, workers.dev
   subdomain must exist at account level.
 - Minimal permissions: Workers Scripts Edit (scripts, secrets, schedules,
   subdomain), D1 Edit, Account Settings Read. Exact OAuth scope ids are to be
@@ -110,17 +110,17 @@ Worker. The dashboard never becomes the place where monitoring lives.
             │ Cloudflare REST client (token in, nothing stored)                            │
             └───────▲───────────────────────────────▲──────────────────────────────────────┘
                     │                               │
-   CLI `edgebeat` (npm)                      Hosted installer (yolkwork.co/edgebeat)
+   CLI `upflare` (npm)                      Hosted installer (yolkwork.co/upflare)
    OAuth PKCE or --api-token                 OAuth code flow, token in memory only
                     │                               │
                     └──────────► user's Cloudflare account ◄──────┘
-                                 Worker "edgebeat" + D1 "edgebeat" + cron + secrets
+                                 Worker "upflare" + D1 "upflare" + cron + secrets
 
    Deploy button (README) ──► Workers Builds runs `bun run deploy` (wrangler) ──► same result
 ```
 
 ### 3.1 Release bundle [call]
-Every Edgebeat version produces one **release bundle**: the bundled Worker
+Every Upflare version produces one **release bundle**: the bundled Worker
 module(s), the built status-page assets, the SQL migrations, and a
 `manifest.json` (version, compatibility date, bindings, cron, asset config
 incl. `run_worker_first`, migration list). Built by a repo script from the
@@ -133,7 +133,7 @@ bundle, never raw source.
 - Pure TypeScript using `fetch` and Web Crypto only, so it runs in Bun/Node
   (CLI) and in a Worker (dashboard).
 - Input: an access token (OAuth or API token), an account id, options
-  (worker name, default `edgebeat`; site name; admin password or "generate").
+  (worker name, default `upflare`; site name; admin password or "generate").
 - Steps, each idempotent and checked before it acts:
   1. Verify token and permissions; list accounts the token can see.
   2. Check limits up front (cron slots, Worker count, D1 count) and fail
@@ -141,7 +141,7 @@ bundle, never raw source.
      [amended 2026-11-09, R14] No up-front D1-count refusal (D1 creation
      reports a real limit before other writes); 100+ Workers is a warning.
   3. Ensure account workers.dev subdomain (if missing, ask the user for one).
-  4. Find or create D1 `edgebeat` (re-use if it exists and has Edgebeat
+  4. Find or create D1 `upflare` (re-use if it exists and has Upflare
      tables).
   5. Apply pending migrations through the D1 query API, recording them in
      wrangler's `d1_migrations` table format so `wrangler d1 migrations
@@ -154,7 +154,7 @@ bundle, never raw source.
   9. Smoke check: `GET https://<worker>.<subdomain>.workers.dev/api/v1/health`.
      [amended 2026-11-09] Smoke check only: if it does not answer in time the
      install still succeeds with a warning (`*.workers.dev` can be blocked by
-     the user's ISP); it never decides whether Edgebeat is installed.
+     the user's ISP); it never decides whether Upflare is installed.
 - **Update** = same steps with a newer bundle; secrets and D1 data are never
   overwritten; migrations are forward-only.
 - Output: status page URL, admin URL, and the admin password **once** (only
@@ -163,13 +163,13 @@ bundle, never raw source.
   same checklist.
 
 ### 3.3 CLI [call]
-- npm package `edgebeat`, run with `bunx edgebeat <cmd>` or
-  `npx edgebeat <cmd>`; ships the release bundle of its own version.
-- `edgebeat setup`: interactive (account picker, worker name, password
+- npm package `upflare`, run with `bunx upflare <cmd>` or
+  `npx upflare <cmd>`; ships the release bundle of its own version.
+- `upflare setup`: interactive (account picker, worker name, password
   choice), then the installer core with a live checklist.
-- `edgebeat update`: deploys the bundle of the installed CLI version to an
+- `upflare update`: deploys the bundle of the installed CLI version to an
   existing install.
-- Auth: Cloudflare OAuth with PKCE through Edgebeat's public OAuth client and
+- Auth: Cloudflare OAuth with PKCE through Upflare's public OAuth client and
   a localhost callback; `--api-token` / `CLOUDFLARE_API_TOKEN` for CI and for
   people who prefer tokens. The token is used for the run and discarded.
 - Non-interactive flags for scripting (`--account`, `--name`,
@@ -186,7 +186,7 @@ bundle, never raw source.
   `deploy` script step that creates/looks up the D1 by name. [call]
 
 ### 3.5 Hosted installer dashboard [owner: installer only]
-- Lives at **`yolkwork.co/edgebeat`** (landing page + "Continue with
+- Lives at **`yolkwork.co/upflare`** (landing page + "Continue with
   Cloudflare") as part of the owner's Yolkwork project [owner, 2026-11-09],
   not in the OSS repo [call], so the OSS
   repo stays self-contained. Stack per owner defaults: Hono on Workers, React
@@ -202,13 +202,13 @@ bundle, never raw source.
 - **Update**: the user comes back, signs in again, the dashboard detects the
   installed version (from the Worker's `/api/v1/health` version field) and
   offers "Update to vX". [amended 2026-11-09] Read it from the script's
-  `EDGEBEAT_VERSION` binding through the Cloudflare API instead (see §6).
+  `UPFLARE_VERSION` binding through the Cloudflare API instead (see §6).
 - Stores at most: Cloudflare user id (from OAuth), account id, worker URL,
   installed version, timestamps — to show "your installations" and update
   notices. Never tokens, never passwords, never email. [call]
-- The dashboard is never contacted by an installed Edgebeat.
+- The dashboard is never contacted by an installed Upflare.
 
-### 3.6 Changes needed in the Edgebeat Worker itself
+### 3.6 Changes needed in the Upflare Worker itself
 - `/api/v1/health` returns `{ ok, version }` so installers can detect what
   is installed.
 - The admin first-run experience (Plan 3) is where every path lands after
@@ -231,12 +231,12 @@ bundle, never raw source.
 
 ## 5. Owner actions (cannot be done by agents)
 
-- Create GitHub org `edgebeat-dev` and make the repo public (Deploy button
+- Create GitHub org `upflare-dev` and make the repo public (Deploy button
   needs a public repo).
-- Register a Cloudflare **public OAuth client** for Edgebeat (name, logo,
+- Register a Cloudflare **public OAuth client** for Upflare (name, logo,
   `yolkwork.co` DNS verification, redirect URIs for the CLI localhost
   callback and the dashboard).
-- Reserve npm package name `edgebeat`.
+- Reserve npm package name `upflare`.
 - Run the Deploy-button and CLI installs once on a throwaway free account.
 
 ---
@@ -244,24 +244,24 @@ bundle, never raw source.
 ## 6. Decisions from the builder check [call]
 
 - **Install source is recorded.** Every install sets a plain-text Worker
-  variable `EDGEBEAT_INSTALL_SOURCE` = `cli`, `cloud` or `git` (the Deploy
+  variable `UPFLARE_INSTALL_SOURCE` = `cli`, `cloud` or `git` (the Deploy
   button / repo path sets `git` in `wrangler.jsonc` `vars`). `/api/v1/health`
   returns it with the version. The CLI and the dashboard **refuse to update a
   `git` install** and explain: "this install is managed by your repo — pull
   upstream to update". This keeps the button's Workers Builds from fighting
   the installer.
 - **D1 name = Worker name.** The installer finds or creates a D1 named
-  exactly like the Worker (default `edgebeat`). Two instances never share a
+  exactly like the Worker (default `upflare`). Two instances never share a
   database. [amended 2026-11-09] "Already installed" is read from the
   Cloudflare API, not workers.dev: a Worker with that name whose settings
-  bindings include `EDGEBEAT_INSTALL_SOURCE` (every upload also sets
-  plain-text `EDGEBEAT_VERSION` = bundle version). A Worker without it is a
+  bindings include `UPFLARE_INSTALL_SOURCE` (every upload also sets
+  plain-text `UPFLARE_VERSION` = bundle version). A Worker without it is a
   name clash.
 - **Where the code lives.** The OSS repo root stays the Worker (the Deploy
   button needs a self-contained root). The installer core and the CLI live in
-  one npm package `edgebeat`, in `cli/` with its own `package.json` (not a
+  one npm package `upflare`, in `cli/` with its own `package.json` (not a
   Bun workspace, so the button's `bun install` at the root is unaffected). It
-  has two entry points: the `edgebeat` binary and `edgebeat/installer` (the
+  has two entry points: the `upflare` binary and `upflare/installer` (the
   core). The hosted dashboard depends on that npm package at an exact
   version, so there is one copy of the install logic. The release bundle is
   produced in the OSS repo and embedded in the npm package at publish time.

@@ -8,7 +8,7 @@ import { jwtKey } from "@/lib/keys";
 import worker from "@/index";
 
 const db = getDb(env);
-const BASE = "https://edgebeat.test";
+const BASE = "https://upflare.test";
 const ORIGIN = BASE;
 
 const login = (password: string) =>

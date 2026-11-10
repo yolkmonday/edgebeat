@@ -11,7 +11,7 @@ import { runTick } from "@/tick/tick";
 
 // admin API -> tick -> snapshot -> public status, end to end through real D1
 const db = getDb(env);
-const BASE = "https://edgebeat.test";
+const BASE = "https://upflare.test";
 const STATUS = `${BASE}/api/v1/status`;
 const MIN = 60_000;
 

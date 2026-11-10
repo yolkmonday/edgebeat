@@ -40,12 +40,12 @@ describe("secrets", () => {
   });
 
   test("validateName follows the slug rule", () => {
-    expect(failure(() => validateName("edgebeat"))).toBeNull();
+    expect(failure(() => validateName("upflare"))).toBeNull();
     expect(failure(() => validateName("my-status-2"))).toBeNull();
     expect(failure(() => validateName("a".repeat(63)))).toBeNull();
     expect(failure(() => validateName(""))?.code).toBe("invalid_name");
     expect(failure(() => validateName("a".repeat(64)))?.code).toBe("invalid_name");
-    expect(failure(() => validateName("Edgebeat"))?.code).toBe("invalid_name");
+    expect(failure(() => validateName("Upflare"))?.code).toBe("invalid_name");
     expect(failure(() => validateName("edge_beat"))?.code).toBe("invalid_name");
   });
 });

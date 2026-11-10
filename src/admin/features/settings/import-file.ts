@@ -12,9 +12,9 @@ export const parseImportFile = (text: string): ParsedImport => {
   } catch {
     return { ok: false, errors: ["This file is not valid JSON."] };
   }
-  if (!isRecord(data)) return { ok: false, errors: ["This file is not an Edgebeat export."] };
-  if (data.edgebeat !== 1) {
-    return { ok: false, errors: [`Unsupported export version${data.edgebeat === undefined ? " (missing \"edgebeat\" field)" : `: ${JSON.stringify(data.edgebeat)}`}. Expected 1.`] };
+  if (!isRecord(data)) return { ok: false, errors: ["This file is not an Upflare export."] };
+  if (data.upflare !== 1) {
+    return { ok: false, errors: [`Unsupported export version${data.upflare === undefined ? " (missing \"upflare\" field)" : `: ${JSON.stringify(data.upflare)}`}. Expected 1.`] };
   }
 
   const errors: string[] = [];

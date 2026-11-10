@@ -1,14 +1,14 @@
-# Edgebeat Plan 1 — Core Engine, Status Page, Admin API
+# Upflare Plan 1 — Core Engine, Status Page, Admin API
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A deployable Edgebeat Worker that checks HTTP/TCP/heartbeat monitors every minute within free-plan limits, stores results in D1 within the write budget, serves a public status page that can never show stale data as green, and exposes an authenticated admin JSON API to manage monitors.
+**Goal:** A deployable Upflare Worker that checks HTTP/TCP/heartbeat monitors every minute within free-plan limits, stores results in D1 within the write budget, serves a public status page that can never show stale data as green, and exposes an authenticated admin JSON API to manage monitors.
 
 **Architecture:** One Cloudflare Worker (Hono) with a `scheduled` handler (tick) and a `fetch` handler (public API, heartbeat ingest, admin API). D1 via Drizzle. The status page is a static Vite-built shell served from Workers Static Assets that renders `GET /api/v1/status`. Pure decision logic (scheduler, evaluator, uptime, snapshot) lives in `src/core/` with no I/O.
 
 **Tech Stack:** TypeScript (strict), Bun (package manager + `bun test` for pure logic), Hono, Drizzle ORM + D1, drizzle-kit, Zod + `@hono/zod-validator`, Vite + Tailwind v4 (status page), Vitest + `@cloudflare/vitest-pool-workers` (Worker/D1 integration), Wrangler 4.
 
-**Spec:** `docs/superpowers/specs/2026-11-09-edgebeat-design.md`
+**Spec:** `docs/superpowers/specs/2026-11-09-upflare-design.md`
 
 ## Global Constraints
 
@@ -41,7 +41,7 @@
 ## File Structure
 
 ```
-edgebeat/
+upflare/
   package.json  bunfig.toml  tsconfig.json  wrangler.jsonc  drizzle.config.ts
   vite.config.ts  vitest.config.ts  .dev.vars.example  .gitignore  LICENSE
   migrations/                       # drizzle-kit output, applied by wrangler
@@ -71,7 +71,7 @@ edgebeat/
 ### Task 1: Scaffold, schema, migrations, empty Worker
 
 **Files:**
-- Create: `package.json`, `bunfig.toml`, `tsconfig.json`, `wrangler.jsonc`, `drizzle.config.ts`, `vitest.config.ts`, `.dev.vars.example`, `.gitignore`, `LICENSE` (MIT, "Edgebeat contributors"), `src/env.ts`, `src/db/schema.ts`, `src/db/client.ts`, `src/index.ts`, `src/api/app.ts`, `migrations/0000_*.sql`
+- Create: `package.json`, `bunfig.toml`, `tsconfig.json`, `wrangler.jsonc`, `drizzle.config.ts`, `vitest.config.ts`, `.dev.vars.example`, `.gitignore`, `LICENSE` (MIT, "Upflare contributors"), `src/env.ts`, `src/db/schema.ts`, `src/db/client.ts`, `src/index.ts`, `src/api/app.ts`, `migrations/0000_*.sql`
 - Test: `test/worker/health.spec.ts`
 
 **Interfaces:**
@@ -92,7 +92,7 @@ edgebeat/
     - `settings`: `key` text pk, `value` text JSON.
 
 - [ ] **Step 1:** `bun init`, then `bun add hono drizzle-orm zod @hono/zod-validator` and `bun add -d wrangler drizzle-kit typescript vitest @cloudflare/vitest-pool-workers @cloudflare/workers-types vite tailwindcss @tailwindcss/vite`. Use whatever versions are current; record them in the commit.
-- [ ] **Step 2:** `wrangler.jsonc`: `name: "edgebeat"`, `main: "src/index.ts"`, `compatibility_date: "2026-11-01"`, `triggers.crons: ["* * * * *"]`, `d1_databases: [{ binding: "DB", database_name: "edgebeat", database_id: "<set by deploy>", migrations_dir: "migrations" }]`, `assets: { directory: "./dist/status-page", binding: "ASSETS", run_worker_first: ["/api/*", "/beat/*"] }`, `observability: { enabled: true }`. `.dev.vars.example`: `ADMIN_PASSWORD=change-me` and `ENCRYPTION_KEY=` with a comment "32 random bytes, base64: openssl rand -base64 32".
+- [ ] **Step 2:** `wrangler.jsonc`: `name: "upflare"`, `main: "src/index.ts"`, `compatibility_date: "2026-11-01"`, `triggers.crons: ["* * * * *"]`, `d1_databases: [{ binding: "DB", database_name: "upflare", database_id: "<set by deploy>", migrations_dir: "migrations" }]`, `assets: { directory: "./dist/status-page", binding: "ASSETS", run_worker_first: ["/api/*", "/beat/*"] }`, `observability: { enabled: true }`. `.dev.vars.example`: `ADMIN_PASSWORD=change-me` and `ENCRYPTION_KEY=` with a comment "32 random bytes, base64: openssl rand -base64 32".
 - [ ] **Step 3:** Write `src/db/schema.ts` exactly per the Interfaces block; `drizzle.config.ts` with `dialect: "sqlite"`, `out: "migrations"`; run `bunx drizzle-kit generate`. Expected: one `migrations/0000_*.sql` creating all 9 tables.
 - [ ] **Step 4:** Write failing test `test/worker/health.spec.ts`: `GET /api/v1/health` returns `200` with JSON `{ ok: true }`. `vitest.config.ts` uses `defineWorkersConfig` with `wrangler.configPath`, and a setup file that calls `applyD1Migrations(env.DB, env.TEST_MIGRATIONS)` (migrations read via `readD1Migrations("migrations")` in the config).
 - [ ] **Step 5:** Run `bunx vitest run test/worker/health.spec.ts`. Expected: FAIL (404).
@@ -206,7 +206,7 @@ Rules: paused → `paused`, failures 0. Maintenance → `maintenance`, failures 
   - `assertMonitorUrl(url: string): void` — throws `Error('invalid_url')` unless scheme is `http:`/`https:` and host is not `localhost`, `*.localhost`, `0.0.0.0`, IPv4 in 10/8, 127/8, 169.254/16, 172.16/12, 192.168/16, 100.64/10, or IPv6 `::1`, `fc00::/7`, `fe80::/10`.
   - `type HttpMonitor = { id: string; url: string; method: string; headers: Record<string,string>; body: string | null; expectedStatus: string; timeoutMs: number; followRedirects: boolean; keyword: string | null; keywordMode: 'contains' | 'not_contains' }`
   - `matchesStatus(code: number, spec: string): boolean` — spec is comma-separated codes or ranges (`"200-399"`, `"200,204,301-302"`).
-  - `runHttpCheck(m: HttpMonitor, timeoutMs: number): Promise<CheckResult>` — never throws. Sets `User-Agent: Edgebeat/1 (+https://edgebeat.sh)`. Keyword: read the body stream up to 65 536 bytes, decode UTF-8, then `reader.cancel()`. Errors map to `ErrorClass` (`AbortError`/timeout → `timeout`; status mismatch → `status`; keyword → `keyword`; other fetch errors → `connect` or `other`).
+  - `runHttpCheck(m: HttpMonitor, timeoutMs: number): Promise<CheckResult>` — never throws. Sets `User-Agent: Upflare/1 (+https://upflare.sh)`. Keyword: read the body stream up to 65 536 bytes, decode UTF-8, then `reader.cancel()`. Errors map to `ErrorClass` (`AbortError`/timeout → `timeout`; status mismatch → `status`; keyword → `keyword`; other fetch errors → `connect` or `other`).
   - `type TcpMonitor = { id: string; host: string; port: number }`
   - `runTcpCheck(m: TcpMonitor, timeoutMs: number): Promise<CheckResult>` — `connect({ hostname, port })` from `cloudflare:sockets`, await `socket.opened` raced with timeout, then `socket.close()`.
 
@@ -347,7 +347,7 @@ Rules: paused → `paused`, failures 0. Maintenance → `maintenance`, failures 
 
 **Interfaces:**
 - Produces:
-  - `jwtKey(env: Env): Promise<CryptoKey>` — HKDF-SHA256 from `ENCRYPTION_KEY` (base64 decoded), info `"edgebeat-jwt"`; Plan 2 adds `channelKey` with info `"edgebeat-channels"` in the same file.
+  - `jwtKey(env: Env): Promise<CryptoKey>` — HKDF-SHA256 from `ENCRYPTION_KEY` (base64 decoded), info `"upflare-jwt"`; Plan 2 adds `channelKey` with info `"upflare-channels"` in the same file.
   - `POST /api/admin/login` `{ password }` → constant-time compare (`crypto.subtle.timingSafeEqual` over SHA-256 digests) → sets cookie `eb_session` (HS256 JWT `{ sub: 'admin', exp: now + 12h }`, `HttpOnly; Secure; SameSite=Strict; Path=/`) → 204. Wrong password → 401 after a fixed 500 ms delay; more than 10 failures per isolate per minute → 429.
   - `POST /api/admin/logout` → clears cookie → 204.
   - `requireAdmin` middleware on `/api/admin/*` (except login): valid cookie JWT, and for non-GET requests the `Origin` header must equal the request origin, else 403. Plan 3 extends it with Bearer API tokens.
@@ -397,4 +397,4 @@ Page behavior: fetch status on load and every 60 s while `document.visibilitySta
 
 - **Plan 2 — Alerts:** `alert_channels` (encrypted secrets, AES-GCM via `channelKey`), `alert_queue`, Telegram/Discord/Slack/webhook (HMAC) senders, optional email binding, per-monitor channel selection, test-send, ≤ 6 sends per tick with overflow queue, consumes `Transition[]` from `runTick`. **Kirimi rollout can start after Plan 2.**
 - **Plan 3 — Admin SPA:** React + Vite + shadcn under `/admin`, first-run wizard, budget meter (writes/reads/subrequests/requests), API tokens (`api_tokens`), import/export by slug (merge, `?prune=true`, secrets excluded).
-- **Plan 4 — Public polish and OSS launch:** incidents + updates, maintenance windows (feeds `inMaintenance`), `/history`, `/feed.xml`, badges `/badge/:slug.svg`, theming, dead-man's switch URL, per-IP rate limit on public API, Deploy to Cloudflare button (`cloudflare.bindings` in `package.json`, verified end-to-end), README/CONTRIBUTING/SECURITY, GitHub org `edgebeat-dev`, docs on `edgebeat.sh`.
+- **Plan 4 — Public polish and OSS launch:** incidents + updates, maintenance windows (feeds `inMaintenance`), `/history`, `/feed.xml`, badges `/badge/:slug.svg`, theming, dead-man's switch URL, per-IP rate limit on public API, Deploy to Cloudflare button (`cloudflare.bindings` in `package.json`, verified end-to-end), README/CONTRIBUTING/SECURITY, GitHub org `upflare-dev`, docs on `upflare.sh`.

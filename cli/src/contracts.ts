@@ -26,9 +26,9 @@ export type ScriptBinding =
   | { type: "assets"; name: string }
   | { type: "plain_text"; name: string; text: string };
 
-// Plain-text Worker variables that identify an Edgebeat install through the Cloudflare API (R13).
-export const INSTALL_SOURCE_BINDING = "EDGEBEAT_INSTALL_SOURCE";
-export const VERSION_BINDING = "EDGEBEAT_VERSION";
+// Plain-text Worker variables that identify an Upflare install through the Cloudflare API (R13).
+export const INSTALL_SOURCE_BINDING = "UPFLARE_INSTALL_SOURCE";
+export const VERSION_BINDING = "UPFLARE_VERSION";
 
 // Read from the script's settings bindings; a field is absent when its binding is missing or unknown.
 export type ScriptInfo = { installSource?: InstallSource; version?: string };

@@ -25,7 +25,7 @@ export const useUi = create<UiState>()(
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
     }),
     {
-      name: "edgebeat-admin-ui",
+      name: "upflare-admin-ui",
       partialize: ({ theme, setupDismissed }) => ({ theme, setupDismissed }),
     },
   ),

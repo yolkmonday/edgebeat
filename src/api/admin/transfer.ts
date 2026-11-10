@@ -64,7 +64,7 @@ transferApi.get("/export", async (c) => {
   ]);
   const slugById = new Map(groupRows.map((g) => [g.id, g.slug]));
   const file: ExportFile = {
-    edgebeat: 1,
+    upflare: 1,
     exportedAt: new Date().toISOString(),
     settings: current,
     groups: groupRows.map((g) => ({ slug: g.slug, name: g.name, sort: g.sort })),
@@ -75,7 +75,7 @@ transferApi.get("/export", async (c) => {
     }),
   };
   const day = file.exportedAt.slice(0, 10);
-  c.header("Content-Disposition", `attachment; filename="edgebeat-config-${day}.json"`);
+  c.header("Content-Disposition", `attachment; filename="upflare-config-${day}.json"`);
   return c.json(file);
 });
 
@@ -113,7 +113,7 @@ const toExportMonitor = (row: Row): MonitorInput => {
 // ---------- import ----------
 
 const fileShape = z.object({
-  edgebeat: z.literal(1),
+  upflare: z.literal(1),
   settings: z
     .object({
       siteName: z.string().trim().min(1).max(80).optional(),

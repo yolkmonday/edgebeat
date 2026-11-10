@@ -4,13 +4,13 @@ import { app } from "@/api/app";
 import { VERSION } from "@/version";
 
 const installSourceFor = async (source: string | undefined) => {
-  const res = await app.request("/api/v1/health", {}, { ...env, EDGEBEAT_INSTALL_SOURCE: source });
+  const res = await app.request("/api/v1/health", {}, { ...env, UPFLARE_INSTALL_SOURCE: source });
   return ((await res.json()) as { installSource: unknown }).installSource;
 };
 
 describe("health", () => {
   it("GET /api/v1/health reports version and install source", async () => {
-    const res = await SELF.fetch("https://edgebeat.test/api/v1/health");
+    const res = await SELF.fetch("https://upflare.test/api/v1/health");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; version: string; installSource: unknown };
     expect(body.ok).toBe(true);

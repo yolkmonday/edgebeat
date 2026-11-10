@@ -1,13 +1,13 @@
 {
-  "name": "edgebeat",
+  "name": "upflare",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
-  "vars": { "EDGEBEAT_INSTALL_SOURCE": "git" },
+  "vars": { "UPFLARE_INSTALL_SOURCE": "git" },
   "triggers": { "crons": ["* * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "edgebeat",
+      "database_name": "upflare",
       "migrations_dir": "migrations"
     }
   ],

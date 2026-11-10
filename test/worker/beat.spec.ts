@@ -6,7 +6,7 @@ import * as t from "@/db/schema";
 import worker from "@/index";
 
 const db = getDb(env);
-const BASE = "https://edgebeat.test";
+const BASE = "https://upflare.test";
 // tokens are 128-bit base64url: 22 chars
 const TOK = "abcdefghijklmnopqrstu_";
 const UNKNOWN = "zzzzzzzzzzzzzzzzzzzzz-";

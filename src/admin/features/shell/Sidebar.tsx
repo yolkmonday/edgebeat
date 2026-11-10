@@ -61,7 +61,7 @@ const SidebarContent = ({ session, onNavigate }: { session: Session; onNavigate?
         ))}
       </nav>
       <div className="flex flex-col gap-0.5 px-5 py-5 text-xs text-muted">
-        <span className="font-mono">Edgebeat {session.version}</span>
+        <span className="font-mono">Upflare {session.version}</span>
         <span>{planLabel(session.plan)} plan · open source, MIT</span>
       </div>
     </div>

@@ -3,7 +3,7 @@ import type { ExportFile } from "@shared/admin-api";
 import { parseImportFile } from "./import-file";
 
 const fixture: ExportFile = {
-  edgebeat: 1,
+  upflare: 1,
   exportedAt: "2026-11-09T12:00:00.000Z",
   settings: { siteName: "Acme status", plan: "free", checkBudget: null },
   groups: [{ slug: "core", name: "Core", sort: 0 }],
@@ -30,15 +30,15 @@ describe("parseImportFile", () => {
 
   test("rejects non-JSON", () => expect(errorsOf("not json {")).toEqual(["This file is not valid JSON."]));
 
-  test("rejects JSON that is not an object", () => expect(errorsOf("[1,2]")[0]).toContain("not an Edgebeat export"));
+  test("rejects JSON that is not an object", () => expect(errorsOf("[1,2]")[0]).toContain("not an Upflare export"));
 
   test("rejects a wrong version", () => {
-    expect(errorsOf(JSON.stringify({ ...fixture, edgebeat: 2 }))[0]).toBe("Unsupported export version: 2. Expected 1.");
+    expect(errorsOf(JSON.stringify({ ...fixture, upflare: 2 }))[0]).toBe("Unsupported export version: 2. Expected 1.");
     expect(errorsOf(JSON.stringify({ groups: [], monitors: [] }))[0]).toContain("missing");
   });
 
   test("lists missing sections", () => {
-    expect(errorsOf(JSON.stringify({ edgebeat: 1 }))).toEqual([
+    expect(errorsOf(JSON.stringify({ upflare: 1 }))).toEqual([
       "Missing \"settings\" object.",
       "Missing \"groups\" list.",
       "Missing \"monitors\" list.",

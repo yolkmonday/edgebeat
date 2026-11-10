@@ -1,5 +1,5 @@
 {
-  "name": "edgebeat",
+  "name": "upflare",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -55,7 +55,7 @@
   "cloudflare": {
     "bindings": {
       "ADMIN_PASSWORD": {
-        "description": "Password for the Edgebeat admin. **At least 12 characters**, not `change-me`."
+        "description": "Password for the Upflare admin. **At least 12 characters**, not `change-me`."
       },
       "ENCRYPTION_KEY": {
         "description": "32 random bytes, base64. Generate with `openssl rand -base64 32`."
